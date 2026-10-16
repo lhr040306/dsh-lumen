@@ -1,8 +1,9 @@
-# Default ignored files
-/shelf/
-/workspace.xml
-# 基于编辑器的 HTTP 客户端请求
-/httpRequests/
-# Datasource local storage ignored files
-/dataSources/
-/dataSources.local.xml
+# JetBrains / MarsCode IDE 本机配置（个人环境相关，不入库）
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# IDE 工作区文件
+workspace.xml
