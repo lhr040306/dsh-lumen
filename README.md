@@ -136,7 +136,7 @@ dsh plugin --profile web add github:lhr040306/dsh-lumen
 dsh plugin --profile web add /仓库根目录的绝对路径
 ```
 
-要钉住版本，就在地址后面加标签或 commit（`https://github.com/lhr040306/dsh-lumen#v1.0.0`、`github:lhr040306/dsh-lumen#v1.0.0`、`...#<commit>`）。
+要钉住版本，就在地址后面加 commit（`https://github.com/lhr040306/dsh-lumen#<commit>`、`github:lhr040306/dsh-lumen#<commit>`）。
 
 装完**重启 DSH**，然后打开 **设置 → 壁纸**。
 
