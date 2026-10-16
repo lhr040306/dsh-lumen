@@ -15,7 +15,7 @@
 [![tests](https://img.shields.io/badge/tests-343%20passing-0F6E56)](dsh-lumen/tests)
 [![plugin](https://img.shields.io/badge/DSH-plugin-534AB7)](dsh-lumen/package.json)
 
-[功能](#功能速览) &nbsp;·&nbsp; [安装](#安装) &nbsp;·&nbsp; [先看效果](#先看效果再决定装不装) &nbsp;·&nbsp; [开发](#本地开发) &nbsp;·&nbsp; [文档](#文档索引)
+[功能](#功能速览) &nbsp;·&nbsp; [安装](#安装) &nbsp;·&nbsp; ·&nbsp; [开发](#本地开发) &nbsp;·&nbsp; [文档](#文档索引)
 
 </div>
 
@@ -139,38 +139,12 @@
 dsh plugin --profile web add dsh-lumen
 ```
 
-从本地目录安装（自己改代码时用），注意指向子目录：
-
-```sh
-dsh plugin --profile web add /绝对路径/dsh-lumen
-```
-
 装完**重启 DSH**，然后打开 **设置 → 壁纸**。
 
 > [!WARNING]
 > 桌面端的 `desktop` profile 由 Electron 应用独占管理，CLI 会硬拒。只跑 Web 就装到 `web`；桌面端请走客户端自带的插件管理入口。
 
 装完没出现壁纸、控制台有 `[dsh-lumen]` 开头的日志，对照 [`docs/INSTALL.md`](dsh-lumen/docs/INSTALL.md) 的故障排查表逐条看。安装、更新、卸载、验证的完整说明也在那一份。
-
----
-
-## 先看效果，再决定装不装
-
-不需要安装，也不需要买服务器、不联外网——一个零依赖的本地 Node 脚本，在仓库内起服务：
-
-```sh
-cd dsh-lumen
-npm run preview
-```
-
-打开终端打印的地址（默认 `http://127.0.0.1:4173/preview/`）。两个刻意的地方：
-
-- 预览里跑的是**要发布的那个包**，不是效果图；右侧显示的设置面板就是面板本身。
-- 有一排拨钟按钮（`+15 分` / `+1 小时` / `+1 天` / `+7 天`），会**真的平移 `Date.now()`**，用来观察调度器跨时点跳变的行为。
-
-预览只写 `preview/.state/lumen.json`，**永远不会碰**真实的 `$DSH_HOME/lumen.json`。
-
----
 
 ## 本地开发
 
