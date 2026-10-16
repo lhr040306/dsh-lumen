@@ -1,18 +1,35 @@
+<div align="center">
+
+<img src="dsh-lumen/icon.svg" width="112" height="112" alt="dsh-lumen">
+
 # dsh-lumen · 流转壁纸
 
-> DeepSeek Harness（DSH）的壁纸插件：12 套**纯程序化生成**的弥散光壁纸，加上本地图片 / 图片地址 / 渐变三类自定义，再配一个真正意义上的**轮播调度器**——按间隔、整点、每日或每次会话自动换图，带交叉淡入。
->
-> 零图片素材、零运行时依赖，内置壁纸**完全离线**生成。
+**给 DeepSeek Harness（DSH）的壁纸调度器**
 
-`dsh-lumen` 的目标不是"换一张好看的图"，而是回答两个问题：**现在显示什么**，以及 **下一次什么时候变、变成什么**。
+12 套纯程序化生成的弥散光壁纸 &nbsp;·&nbsp; 本地图片 / 图片地址 / 渐变<br>
+按间隔 · 整点 · 每日 · 每次会话自动换图，带交叉淡入
+
+[![npm](https://img.shields.io/npm/v/dsh-lumen?color=534AB7&label=npm&logo=npm&logoColor=white)](https://www.npmjs.com/package/dsh-lumen)
+[![license](https://img.shields.io/badge/license-MIT-534AB7)](dsh-lumen/LICENSE)
+[![node](https://img.shields.io/badge/node-%E2%89%A5%2018-3B6D11)](dsh-lumen/package.json)
+[![tests](https://img.shields.io/badge/tests-343%20passing-0F6E56)](dsh-lumen/tests)
+[![plugin](https://img.shields.io/badge/DSH-plugin-534AB7)](dsh-lumen/package.json)
+
+[功能](#功能速览) &nbsp;·&nbsp; [安装](#安装) &nbsp;·&nbsp; [先看效果](#先看效果再决定装不装) &nbsp;·&nbsp; [开发](#本地开发) &nbsp;·&nbsp; [文档](#文档索引)
+
+</div>
 
 ---
 
-## 仓库结构：包在子目录里
+> `dsh-lumen` 的目标不是"换一张好看的图"，而是回答两个问题：**现在显示什么**，以及 **下一次什么时候变、变成什么**。
+>
+> 零图片素材、零运行时依赖，内置壁纸**完全离线**生成。
 
-**仓库根目录不是包本体。** 可安装的包在 [`dsh-lumen/`](dsh-lumen/) 子目录中——`package.json`、源码、构建产物、测试、文档全在那一层。根目录只放仓库级文件。
+---
 
-这一点在安装时会咬人：**从本地目录安装要指向 `dsh-lumen/`，不是仓库根。** 指向仓库根会因为没有 `package.json` 而失败。
+## 这个仓库里有什么
+
+可安装的包在 **[`dsh-lumen/`](dsh-lumen/)** 子目录里——`package.json`、源码、构建产物、测试、文档全在那一层。仓库根目录只放仓库级文件，你正在读的这份 README 就是其中之一。
 
 ```
 .
@@ -21,6 +38,9 @@
 └── README.md         ← 你正在读的这一份
 ```
 
+> [!IMPORTANT]
+> 从本地目录安装时**要指向 `dsh-lumen/` 子目录，而不是仓库根**。指向仓库根会因为找不到 `package.json` 而失败。
+
 包的完整说明在 **[`dsh-lumen/README.md`](dsh-lumen/README.md)**，本文只做导览。
 
 ---
@@ -28,8 +48,8 @@
 ## 它和常见的换肤插件有什么不同
 
 | | 常见做法 | dsh-lumen |
-| --- | --- | --- |
-| **壁纸从哪来** | 打包图片素材，或让用户自己传 | 12 套**参数化配方**，运行时用 CSS 渐变算出来。不打包任何图片 |
+| :-- | :-- | :-- |
+| **壁纸从哪来** | 打包图片素材，或让用户自己传 | 12 套**参数化配方**，运行时用 CSS 渐变算出来。不打包任何图片，可选集也不随体积增长 |
 | **什么时候换** | 装上就一直是一张 | **调度器**：4 种触发方式 × 3 种顺序策略，落在可预测的钟点上 |
 | **文字还看得清吗** | 交给用户调透明度 | 洗色层透明度对着 **WCAG AA 对比度求解**，且永远不比用户设的更透明 |
 
@@ -38,6 +58,17 @@
 ---
 
 ## 功能速览
+
+| 模块 | 内容 |
+| :-- | :-- |
+| **壁纸来源** | 12 套内置配方（深色 7 / 浅色 5）· 本地图片（可多选、可拖拽）· 图片地址 · 双色标渐变 |
+| **轮播调度器** | 4 种触发方式 × 3 种顺序策略 · 间隔模式**锚定网格**，不随刷新重置 · 洗牌走完一轮前不重复 · 有损追赶 |
+| **开屏** | 一个素材两处去处 · 图片开屏走纯 CSS **首帧上色** · 视频静音自动播放 · 四个出口全部有界 |
+| **可读性下限** | alpha 对着 WCAG 2.1 AA 求解 · 面板**显示实际生效值**而非偷偷改掉 · 本地图片**实测亮度**驱动 |
+| **工程** | 中英双语 149 条键完全对称 · 两层持久化跨重启生效 · 插件入口**从不抛异常** · 343 项单元测试 |
+
+<details>
+<summary>展开每一项的细节</summary>
 
 **壁纸来源**
 
@@ -71,17 +102,44 @@
 - 插件入口**从不抛异常**——最坏情况是"壁纸不出现 + 控制台一行日志"，不会让 DSH 起不来
 - 343 项单元测试，调度部分是纯函数，边界情况（睡过触发点、时钟回拨、夏令时、两张图的洗牌列表）都能当普通单测来测
 
+</details>
+
+---
+
+## 12 套内置壁纸
+
+全部为程序化配方，`complexity` 是"画面有多花"的估计值（0–1），驱动自动弱化。
+
+| 配方 | 名称 | 中文名 | 取向 | complexity | 标签 |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| `drift` | Drift | 弥散 | 深 | 0.30 | calm, glow |
+| `aurora` | Aurora | 极光 | 深 | 0.42 | cool, band |
+| `starfield` | Starfield | 星野 | 深 | 0.55 | night, point |
+| `abyss` | Abyss | 深海 | 深 | 0.34 | deep, cool |
+| `ember` | Ember | 暮霭 | 深 | 0.44 | warm, dusk |
+| `mono` | Mono | 墨韵 | 深 | 0.18 | minimal, neutral |
+| `lumen` | Halo | 光晕 | 深 | 0.36 | focus, glow |
+| `ivory` | Ivory | 象牙 | 浅 | 0.22 | warm, paper |
+| `mist` | Mist | 晨雾 | 浅 | 0.20 | cool, calm |
+| `dune` | Dune | 沙丘 | 浅 | 0.30 | warm, band |
+| `glacier` | Glacier | 冰川 | 浅 | 0.34 | cool, facet |
+| `paper` | Paper | 纸纹 | 浅 | 0.14 | paper, neutral |
+
+每个配方都有一个 **seed**：同一配方换一个种子就是同一风格的另一种构图（面板上的「摇一摇」，也可以复制种子分享给别人）。
+
 ---
 
 ## 安装
 
 前置：**DSH Desktop 或 DSH Web**，Node ≥ 18。
 
+从 npm 安装：
+
 ```sh
 dsh plugin --profile web add dsh-lumen
 ```
 
-从本地目录（自己改代码时用）——注意指向子目录：
+从本地目录安装（自己改代码时用），注意指向子目录：
 
 ```sh
 dsh plugin --profile web add /绝对路径/dsh-lumen
@@ -89,12 +147,10 @@ dsh plugin --profile web add /绝对路径/dsh-lumen
 
 装完**重启 DSH**，然后打开 **设置 → 壁纸**。
 
-两点提醒：
+> [!WARNING]
+> 桌面端的 `desktop` profile 由 Electron 应用独占管理，CLI 会硬拒。只跑 Web 就装到 `web`；桌面端请走客户端自带的插件管理入口。
 
-- 桌面端的 `desktop` profile 由 Electron 应用独占管理，CLI 会硬拒。只跑 Web 就装到 `web`；桌面端请走客户端自带的插件管理入口。
-- 装完没出现壁纸、控制台有 `[dsh-lumen]` 开头的日志，对照 [`docs/INSTALL.md`](dsh-lumen/docs/INSTALL.md) 的故障排查表逐条看。
-
-安装、更新、卸载、验证、故障排查的完整说明：[`dsh-lumen/docs/INSTALL.md`](dsh-lumen/docs/INSTALL.md)。
+装完没出现壁纸、控制台有 `[dsh-lumen]` 开头的日志，对照 [`docs/INSTALL.md`](dsh-lumen/docs/INSTALL.md) 的故障排查表逐条看。安装、更新、卸载、验证的完整说明也在那一份。
 
 ---
 
@@ -107,7 +163,10 @@ cd dsh-lumen
 npm run preview
 ```
 
-打开终端打印的地址（默认 `http://127.0.0.1:4173/preview/`）。预览里跑的是**要发布的那个包**，不是效果图；还有一排拨钟按钮（`+15 分` / `+1 小时` / `+1 天` / `+7 天`）真的平移 `Date.now()`，用来观察调度器跨时点跳变的行为。
+打开终端打印的地址（默认 `http://127.0.0.1:4173/preview/`）。两个刻意的地方：
+
+- 预览里跑的是**要发布的那个包**，不是效果图；右侧显示的设置面板就是面板本身。
+- 有一排拨钟按钮（`+15 分` / `+1 小时` / `+1 天` / `+7 天`），会**真的平移 `Date.now()`**，用来观察调度器跨时点跳变的行为。
 
 预览只写 `preview/.state/lumen.json`，**永远不会碰**真实的 `$DSH_HOME/lumen.json`。
 
@@ -125,7 +184,7 @@ npm run verify
 `verify` 等价于依次跑下面三项，全部**只读**：
 
 | 命令 | 作用 |
-| --- | --- |
+| :-- | :-- |
 | `npm run build:check` | 校验构建产物与源码一致（改了源码没重新生成会失败） |
 | `npm run typecheck` | 静态检查每个源码文件、脚本、HTML 引用是否可解析 |
 | `npm test` | 18 个测试文件、343 项 |
@@ -136,12 +195,49 @@ npm run verify
 npm run build
 ```
 
+<details>
+<summary>展开完整目录树</summary>
+
+```
+dsh-lumen/
+├── lib/                     构建产物
+│   ├── index.js             宿主半边：状态文件 + /lumen/api 与 /lumen/splash 路由 + 启动遮罩与守卫
+│   ├── client.js            浏览器半边（由 src/ 的 16 个模块拼成）
+│   └── types/               手写类型声明
+├── src/                     浏览器半边的源码（16 个模块）
+│   ├── index.cjs            装配缝：store + engine + splash + panel + 宿主服务
+│   ├── state.cjs            状态模型：一个形状、一个归一化器、一份序列化
+│   ├── scheduler.cjs        轮播调度器（纯函数）
+│   ├── wallpapers.cjs       12 套配方与渲染
+│   ├── engine.cjs           渲染引擎：DOM 层叠、洗色、token 覆盖
+│   ├── splash.cjs           开屏的浏览器半边
+│   ├── store.cjs            两层持久化
+│   ├── color.cjs            WCAG 对比度求解、亮度估计、像素亮度分位
+│   ├── oklab.cjs            Oklab/OKLCH 感知色彩空间、色域映射
+│   ├── image.cjs            本地图片解码 / 缩放 / 压缩 / 亮度实测
+│   ├── rng.cjs              mulberry32 + FNV-1a 种子化随机
+│   ├── react-bridge.cjs     把无框架面板挂进 React 设置区
+│   ├── i18n.cjs             双语字典与查找（149 条）
+│   └── ui/                  面板、DOM 构造器、样式
+├── preview/                 浏览器可交互预览（工具，不属于发布产物）
+├── scripts/                 build / typecheck / serve
+├── tests/                   18 个测试文件、343 项
+├── locale/                  zh.json / en.json（由源码生成）
+├── docs/                    INSTALL / INNOVATION / SPLASH-SPEC / WALLPAPER-SPEC
+├── cordis.patch.yml         profile 补丁层：插入一个 loader 条目
+└── package.json
+```
+
+</details>
+
+双面插件：宿主半边通过 `cordis.patch.yml` 的 `insert` 条目注册（`id: lumen`），浏览器半边由 `dsh-client-modules` 按 `package.json` 里的 `dsh.client` 声明拾取，和官方 `ui-*` 包一样。
+
 ---
 
 ## 文档索引
 
 | 文档 | 内容 |
-| --- | --- |
+| :-- | :-- |
 | [`dsh-lumen/README.md`](dsh-lumen/README.md) | 包的完整说明：功能、12 套配方、调度器、可读性下限、持久化、隐私与安全、兼容性 |
 | [`docs/INSTALL.md`](dsh-lumen/docs/INSTALL.md) | 安装、更新、卸载、验证、故障排查 |
 | [`docs/INNOVATION.md`](dsh-lumen/docs/INNOVATION.md) | 在哪些地方做了不同的技术选择，以及为什么 |
@@ -150,14 +246,18 @@ npm run build
 
 ---
 
-## 隐私与安全（摘要）
+## 隐私与安全
 
-- **插件自身不发任何网络请求。** 内置壁纸本地算出；`图片地址` 由浏览器直接加载，插件不代理、不上报。
-- **壁纸不读磁盘。** 本地图片走浏览器 `File` API 读入，缩放压缩后存本地，原图不会被复制到别处。
-- **宿主路由是围栏，不是鉴权。** `/lumen/api` 与 `/lumen/splash` 要求回环地址的 `Host` + 同源标记（DNS rebinding 防御），并叠加宿主提供的会话鉴权层。
-- **所有 DOM 节点带 `data-dsh-lumen` 标记**，样式表 id 为 `dsh-lumen-style`，存储键前缀 `dsh-lumen:`，不会与别的插件互相干扰。
+<details>
+<summary>展开</summary>
 
-详见 [`dsh-lumen/README.md`](dsh-lumen/README.md) 的隐私与安全一节。
+- **插件自身不发任何网络请求。** 内置壁纸本地算出；`图片地址` 由浏览器直接加载，插件不代理、不上报、不探测可达性。
+- **壁纸不读磁盘。** 本地图片走浏览器 `File` API 读入（点选和拖拽同一条路径），缩放压缩后存本地，原图不会被复制到别处。
+- **开屏会写自己的媒体目录。** 媒体字节落在 `$DSH_HOME/lumen-media/`，**文件名由宿主生成**，状态里只留文件名——既不是路径，也不是字节。
+- **宿主路由是围栏，不是鉴权。** `/lumen/api` 与 `/lumen/splash` 要求回环地址的 `Host` + 同源浏览器标记（DNS rebinding / 跨站防御），并叠加宿主提供的会话鉴权层。
+- **重名也不冲突。** 所有 DOM 节点带 `data-dsh-lumen` 标记，样式表 id 为 `dsh-lumen-style`，存储键前缀 `dsh-lumen:`。
+
+</details>
 
 ---
 
