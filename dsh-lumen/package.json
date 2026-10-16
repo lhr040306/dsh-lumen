@@ -3,6 +3,15 @@
   "version": "1.0.0",
   "description": "DeepSeek Harness 流转壁纸插件（Lumen）：12 套纯程序化生成的弥散光壁纸 + 本地图/URL/渐变自定义 + 轮播调度器（按间隔 / 整点 / 每日 / 每次会话自动换图，带交叉淡入）。零图片素材、零版权风险，纯原生 token 实现。Wallpaper rotation for DSH with procedurally generated built-in wallpapers and a rotation scheduler.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lhr040306/dsh-lumen.git",
+    "directory": "dsh-lumen"
+  },
+  "homepage": "https://github.com/lhr040306/dsh-lumen/tree/main/dsh-lumen#readme",
+  "bugs": {
+    "url": "https://github.com/lhr040306/dsh-lumen/issues"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
