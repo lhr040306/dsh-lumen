@@ -38,7 +38,7 @@ const ITEM_SLOT = "settings.lumen.item";
 /** Global carrying the read-only diagnostics snapshot. */
 const STATUS_GLOBAL = "__DSH_LUMEN__";
 /** Hard cap on how many diagnostics snapshots we publish. */
-const PLUGIN_BUILD = "1.0.0";
+const PLUGIN_BUILD = "1.0.1";
 
 /** Services this plugin wants before `apply` runs. */
 const inject = ["slots", "locale", "theme"];
