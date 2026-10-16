@@ -75,7 +75,7 @@
 - **视频开屏走浏览器半边** —— 全屏层 + 自动播放（静音：不静音的话浏览器一律拒绝自动播放，那就没有开屏了），拿到第一帧就放行界面，播完或点击/按键跳过即撤层
 - **四个出口全部有界** —— 第一帧 8 秒、总寿命 120 秒、解码失败立即、用户跳过立即。**卡在中途的片子不发任何事件**，所以总寿命这条时限是单独留着的，不能被"已经开始播了"顶掉
 - **两层时限各管各的** —— 遮罩的兜底（10 秒 / 延长后 30 秒）管的是遮罩，层的时限管的是层；图片路径根本不挂层
-- **只存文件名** —— 媒体字节写在 `$DSH_HOME/lumen-media/`，状态里只有宿主自己生成的名字，服务哪个文件由白名单形状拼出来（见 [`docs/SPLASH-SPEC.md`](docs/SPLASH-SPEC.md)）
+- **只存文件名** —— 媒体字节写在 `$DSH_HOME/lumen-media/`，状态里只有宿主自己生成的名字，服务哪个文件由白名单形状拼出来（见 [`SPLASH-SPEC.md`](SPLASH-SPEC.md)）
 
 **工程细节**
 
@@ -166,13 +166,19 @@
 
 前置：DSH Desktop 或 DSH Web，Node ≥ 18。
 
-安装、更新、卸载、以及 `--profile desktop` 会被 CLI 拒绝这件事的完整说明，见 **[`docs/INSTALL.md`](docs/INSTALL.md)**。最短路径是：
+安装、更新、卸载、以及 `--profile desktop` 会被 CLI 拒绝这件事的完整说明，见 **[`INSTALL.md`](INSTALL.md)**。最短路径是**在 DSH 的插件安装入口填仓库地址**——包根即仓库根，GitHub 地址可以直接装；插件还没发布到 npm，填包名会被当成 npm 包去查，报「未找到相关插件」：
 
-```sh
-dsh plugin --profile web add dsh-lumen
+```text
+https://github.com/lhr040306/dsh-lumen
 ```
 
-（如果你是从本地目录安装，把 `dsh-lumen` 换成该目录路径。）
+CLI 等价写法：
+
+```sh
+dsh plugin --profile web add github:lhr040306/dsh-lumen
+```
+
+（从本地目录安装就把来源换成仓库根目录的绝对路径。）
 
 装完 **重启 DSH**，然后打开 **设置 → 壁纸**。若想先看效果再决定要不要装，直接跑[浏览器可交互预览](#浏览器可交互预览)。
 
@@ -217,7 +223,7 @@ DSH Desktop 每次启动都把 Web 服务绑到**系统随机分配的端口**�
 
 ## 本地开发
 
-以下命令都在 `dsh-lumen/` 目录内执行。
+以下命令都在**仓库根目录**执行（包根即仓库根）。
 
 **只读** —— 校验构建产物是否与源码一致（CI 漂移检测）：
 
@@ -231,7 +237,7 @@ npm run build:check
 npm run typecheck
 ```
 
-**只读** —— 跑单元测试（14 个文件，209 项）：
+**只读** —— 跑单元测试（18 个文件，343 项）：
 
 ```sh
 npm test
@@ -289,7 +295,7 @@ npm run preview
 ## 目录结构
 
 ```
-dsh-lumen/
+dsh-lumen/（仓库根 = 包根）
 ├── lib/                     构建产物
 │   ├── index.js             宿主半边（1160 行）：状态文件 + /lumen/api 与 /lumen/splash 路由 + 启动遮罩与守卫
 │   ├── client.js            浏览器半边（6544 行，264532 字符，由 src/ 的 16 个模块拼成）
@@ -316,7 +322,7 @@ dsh-lumen/
 ├── scripts/                 build / typecheck / serve
 ├── tests/                   18 个测试文件，343 项（7398 行，含 DOM 替身）
 ├── locale/                  zh.json / en.json（由源码生成）
-├── docs/                    INSTALL / INNOVATION / SPLASH-SPEC / WALLPAPER-SPEC
+├── docs/                    INSTALL / INNOVATION / SPLASH-SPEC / WALLPAPER-SPEC / PACKAGE
 ├── cordis.patch.yml         profile 补丁层：插入一个 loader 条目
 └── package.json
 ```
@@ -357,15 +363,15 @@ dsh-lumen/
 
 ## 文档索引
 
-- **[docs/INSTALL.md](docs/INSTALL.md)** —— 安装、更新、卸载、验证、故障排查
-- **[docs/INNOVATION.md](docs/INNOVATION.md)** —— 这个插件在哪些地方做了不同的技术选择，以及为什么
-- **[docs/WALLPAPER-SPEC.md](docs/WALLPAPER-SPEC.md)** —— 配方参数、状态字段、调度常量、存储格式的完整规格
-- **[docs/SPLASH-SPEC.md](docs/SPLASH-SPEC.md)** —— 开屏协议：媒体存储、三条路由、启动遮罩与兜底守卫、视频的浏览器半边，以及层叠与"不留僵尸层"的运行时实测结果
+- **[INSTALL.md](INSTALL.md)** —— 安装、更新、卸载、验证、故障排查
+- **[INNOVATION.md](INNOVATION.md)** —— 这个插件在哪些地方做了不同的技术选择，以及为什么
+- **[WALLPAPER-SPEC.md](WALLPAPER-SPEC.md)** —— 配方参数、状态字段、调度常量、存储格式的完整规格
+- **[SPLASH-SPEC.md](SPLASH-SPEC.md)** —— 开屏协议：媒体存储、三条路由、启动遮罩与兜底守卫、视频的浏览器半边，以及层叠与"不留僵尸层"的运行时实测结果
 
 ---
 
 ## 许可
 
-MIT。见 [LICENSE](LICENSE)。
+MIT。见 [../LICENSE](../LICENSE)。
 
 本项目是第三方插件，非 DeepSeek 官方产品。它遵循 DSH 社区的插件惯例（双面结构、宿主路由围栏、`--dsw-*` 主题令牌），但代码与设计均为独立实现，不包含任何第三方代码或素材。

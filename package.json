@@ -5,10 +5,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lhr040306/dsh-lumen.git",
-    "directory": "dsh-lumen"
+    "url": "git+https://github.com/lhr040306/dsh-lumen.git"
   },
-  "homepage": "https://github.com/lhr040306/dsh-lumen/tree/main/dsh-lumen#readme",
+  "homepage": "https://github.com/lhr040306/dsh-lumen#readme",
   "bugs": {
     "url": "https://github.com/lhr040306/dsh-lumen/issues"
   },

@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="dsh-lumen/icon.svg" width="112" height="112" alt="dsh-lumen">
+<img src="icon.svg" width="112" height="112" alt="dsh-lumen">
 
 # dsh-lumen · 流转壁纸
 
@@ -9,13 +9,13 @@
 12 套纯程序化生成的弥散光壁纸 &nbsp;·&nbsp; 本地图片 / 图片地址 / 渐变<br>
 按间隔 · 整点 · 每日 · 每次会话自动换图，带交叉淡入
 
-[![npm](https://img.shields.io/npm/v/dsh-lumen?color=534AB7&label=npm&logo=npm&logoColor=white)](https://www.npmjs.com/package/dsh-lumen)
-[![license](https://img.shields.io/badge/license-MIT-534AB7)](dsh-lumen/LICENSE)
-[![node](https://img.shields.io/badge/node-%E2%89%A5%2018-3B6D11)](dsh-lumen/package.json)
-[![tests](https://img.shields.io/badge/tests-343%20passing-0F6E56)](dsh-lumen/tests)
-[![plugin](https://img.shields.io/badge/DSH-plugin-534AB7)](dsh-lumen/package.json)
+[![license](https://img.shields.io/badge/license-MIT-534AB7)](LICENSE)
+[![node](https://img.shields.io/badge/node-%E2%89%A5%2018-3B6D11)](package.json)
+[![tests](https://img.shields.io/badge/tests-343%20passing-0F6E56)](tests)
+[![plugin](https://img.shields.io/badge/DSH-plugin-534AB7)](package.json)
+[![github](https://img.shields.io/badge/GitHub-lhr040306%2Fdsh--lumen-534AB7?logo=github&logoColor=white)](https://github.com/lhr040306/dsh-lumen)
 
-[功能](#功能速览) &nbsp;·&nbsp; [安装](#安装) &nbsp;·&nbsp; ·&nbsp; [开发](#本地开发) &nbsp;·&nbsp; [文档](#文档索引)
+[功能](#功能速览) &nbsp;·&nbsp; [安装](#安装) &nbsp;·&nbsp; [壁纸](#12-套内置壁纸) &nbsp;·&nbsp; [开发](#本地开发) &nbsp;·&nbsp; [文档](#文档索引)
 
 </div>
 
@@ -115,25 +115,41 @@
 
 前置：**DSH Desktop 或 DSH Web**，Node ≥ 18。
 
-从 npm 安装：
+**包根目录就是仓库根目录**（`package.json` 在仓库根上），所以下面两种来源都能直接装。插件尚未发布到 npm —— 别在安装入口填 `dsh-lumen`：那会被当成 npm 包名去查仓库，查不到就报「未找到相关插件」。
+
+**方式一：GitHub 地址**（推荐）。在 DSH 的**插件安装入口**（设置 → 插件 → 安装）的输入框里填仓库地址：
+
+```text
+https://github.com/lhr040306/dsh-lumen
+```
+
+**方式二：本地目录**。先 `git clone` 到本机一个不会随手删掉的位置，安装入口填**仓库根目录的绝对路径**：
+
+```text
+F:\develop\dsh-lumen
+```
+
+两种来源等价的 CLI 写法：
 
 ```sh
-dsh plugin --profile web add dsh-lumen
+dsh plugin --profile web add github:lhr040306/dsh-lumen
+dsh plugin --profile web add /仓库根目录的绝对路径
 ```
 
 装完**重启 DSH**，然后打开 **设置 → 壁纸**。
 
 > [!WARNING]
 > 桌面端的 `desktop` profile 由 Electron 应用独占管理，CLI 会硬拒。只跑 Web 就装到 `web`；桌面端请走客户端自带的插件管理入口。
+>
+> GitHub 地址和本地目录**都不经过安装源（镜像源）**——安装源只对 npm 包名生效。GitHub 地址装不通时，先确认这台机器能访问 `github.com`（或给它配代理）。
 
-装完没出现壁纸、控制台有 `[dsh-lumen]` 开头的日志，对照 [`docs/INSTALL.md`](dsh-lumen/docs/INSTALL.md) 的故障排查表逐条看。安装、更新、卸载、验证的完整说明也在那一份。
+装完没出现壁纸、控制台有 `[dsh-lumen]` 开头的日志，对照 [`docs/INSTALL.md`](docs/INSTALL.md) 的故障排查表逐条看。安装、更新、卸载、验证的完整说明也在那一份。
 
 ## 本地开发
 
-以下命令都在 `dsh-lumen/` 目录内执行：
+以下命令都在**仓库根目录**执行（包根即仓库根）：
 
 ```sh
-cd dsh-lumen
 npm run verify
 ```
 
@@ -155,7 +171,7 @@ npm run build
 <summary>展开完整目录树</summary>
 
 ```
-dsh-lumen/
+dsh-lumen/（仓库根 = 包根）
 ├── lib/                     构建产物
 │   ├── index.js             宿主半边：状态文件 + /lumen/api 与 /lumen/splash 路由 + 启动遮罩与守卫
 │   ├── client.js            浏览器半边（由 src/ 的 16 个模块拼成）
@@ -179,7 +195,7 @@ dsh-lumen/
 ├── scripts/                 build / typecheck / serve
 ├── tests/                   18 个测试文件、343 项
 ├── locale/                  zh.json / en.json（由源码生成）
-├── docs/                    INSTALL / INNOVATION / SPLASH-SPEC / WALLPAPER-SPEC
+├── docs/                    INSTALL / INNOVATION / SPLASH-SPEC / WALLPAPER-SPEC / PACKAGE
 ├── cordis.patch.yml         profile 补丁层：插入一个 loader 条目
 └── package.json
 ```
@@ -194,11 +210,11 @@ dsh-lumen/
 
 | 文档 | 内容 |
 | :-- | :-- |
-| [`dsh-lumen/README.md`](dsh-lumen/README.md) | 包的完整说明：功能、12 套配方、调度器、可读性下限、持久化、隐私与安全、兼容性 |
-| [`docs/INSTALL.md`](dsh-lumen/docs/INSTALL.md) | 安装、更新、卸载、验证、故障排查 |
-| [`docs/INNOVATION.md`](dsh-lumen/docs/INNOVATION.md) | 在哪些地方做了不同的技术选择，以及为什么 |
-| [`docs/WALLPAPER-SPEC.md`](dsh-lumen/docs/WALLPAPER-SPEC.md) | 配方参数、状态字段、调度常量、存储格式的完整规格 |
-| [`docs/SPLASH-SPEC.md`](dsh-lumen/docs/SPLASH-SPEC.md) | 开屏协议：媒体存储、三条路由、启动遮罩与兜底守卫 |
+| [`docs/PACKAGE.md`](docs/PACKAGE.md) | 包的完整说明：功能、12 套配方、调度器、可读性下限、持久化、隐私与安全、兼容性 |
+| [`docs/INSTALL.md`](docs/INSTALL.md) | 安装、更新、卸载、验证、故障排查 |
+| [`docs/INNOVATION.md`](docs/INNOVATION.md) | 在哪些地方做了不同的技术选择，以及为什么 |
+| [`docs/WALLPAPER-SPEC.md`](docs/WALLPAPER-SPEC.md) | 配方参数、状态字段、调度常量、存储格式的完整规格 |
+| [`docs/SPLASH-SPEC.md`](docs/SPLASH-SPEC.md) | 开屏协议：媒体存储、三条路由、启动遮罩与兜底守卫 |
 
 ---
 
@@ -227,6 +243,6 @@ dsh-lumen/
 
 ## 许可
 
-MIT，见 [`dsh-lumen/LICENSE`](dsh-lumen/LICENSE)。
+MIT，见 [`LICENSE`](LICENSE)。
 
 本项目是**第三方插件，非 DeepSeek 官方产品**。它遵循 DSH 社区的插件惯例。
