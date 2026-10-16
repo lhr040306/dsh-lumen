@@ -27,24 +27,6 @@
 
 ---
 
-## 这个仓库里有什么
-
-可安装的包在 **[`dsh-lumen/`](dsh-lumen/)** 子目录里——`package.json`、源码、构建产物、测试、文档全在那一层。仓库根目录只放仓库级文件，你正在读的这份 README 就是其中之一。
-
-```
-.
-├── dsh-lumen/        ← 可安装的包本体（package.json 在这里）
-├── .gitignore
-└── README.md         ← 你正在读的这一份
-```
-
-> [!IMPORTANT]
-> 从本地目录安装时**要指向 `dsh-lumen/` 子目录，而不是仓库根**。指向仓库根会因为找不到 `package.json` 而失败。
-
-包的完整说明在 **[`dsh-lumen/README.md`](dsh-lumen/README.md)**，本文只做导览。
-
----
-
 ## 它和常见的换肤插件有什么不同
 
 | | 常见做法 | dsh-lumen |
