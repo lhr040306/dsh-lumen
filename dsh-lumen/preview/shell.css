@@ -1,0 +1,699 @@
+/*
+ * The preview's own stylesheet.
+ *
+ * TWO PALETTES, DELIBERATELY SEPARATED
+ *
+ * The left half is a mock DSH shell and is painted entirely in the *theme's*
+ * `--dsw-*` tokens, because that is the surface a wallpaper is supposed to be
+ * legible on: if the preview's fake chat text used the preview's own colours,
+ * the readability floor would be demonstrated against the wrong backdrop and
+ * would prove nothing.
+ *
+ * The right half is preview chrome — the control surface and the inspector — and
+ * uses its own `--pg-*` palette instead, which follows light/dark but never the
+ * wash. Chrome drawn on a translucent canvas would make the readouts hard to
+ * read exactly when the wash is heaviest, which is when they matter most.
+ *
+ * Nothing here is part of the shipped plugin. The panel brings its own sheet
+ * (`src/ui/styles.cjs`); class names are prefixed `pg-` to stay out of its way,
+ * and the panel's `lumen-` namespace is untouched.
+ */
+
+:root {
+	--pg-bg: #0b0d11;
+	--pg-panel: #12151b;
+	--pg-panel-2: #171b22;
+	--pg-border: rgba(255, 255, 255, 0.09);
+	--pg-border-2: rgba(255, 255, 255, 0.16);
+	--pg-text: #e7e9f0;
+	--pg-text-2: #9aa1ae;
+	--pg-text-3: #6f7683;
+	--pg-accent: #7c9cff;
+	--pg-warn: #e0a34a;
+	--pg-ok: #63c88a;
+	--pg-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+html[data-dsw-scheme="light"] {
+	--pg-bg: #eceef3;
+	--pg-panel: #f7f8fb;
+	--pg-panel-2: #eef0f5;
+	--pg-border: rgba(14, 13, 10, 0.12);
+	--pg-border-2: rgba(14, 13, 10, 0.2);
+	--pg-text: #1b1d22;
+	--pg-text-2: #545a65;
+	--pg-text-3: #6d7480;
+	--pg-accent: #2f5fd0;
+	--pg-warn: #8a6100;
+	--pg-ok: #0b7a3d;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+/*
+ * The canvas backdrop. The engine's root is `position: fixed; z-index: -1`, and
+ * a negative-z descendant paints *after* the canvas background — so this value
+ * is only ever visible if the wallpaper fails to paint, which is exactly the
+ * information a preview should carry.
+ */
+html,
+body {
+	margin: 0;
+	height: 100%;
+	background: var(--pg-bg);
+	color: var(--pg-text);
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+	font-size: 13px;
+	line-height: 1.6;
+	-webkit-font-smoothing: antialiased;
+}
+
+#pg-root {
+	height: 100%;
+}
+
+.pg {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 468px;
+	height: 100%;
+}
+
+/* ── left: the mock DSH shell ─────────────────────────────────────────────── */
+
+.pg-stage {
+	position: relative;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+/*
+ * The mock shell's own canvas. This is the token the plugin's wash overrides, so
+ * it is the one surface where the wallpaper has to show through — and the only
+ * reason the whole preview is possible at all.
+ */
+.shell {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: grid;
+	grid-template-columns: 232px minmax(0, 1fr);
+	background: var(--dsw-alias-bg-base, #111317);
+	color: var(--dsw-alias-label-primary, #edf0f7);
+	overflow: hidden;
+}
+
+.shell-side {
+	background: var(--dsw-specific-sidebar-fill, #0f1114);
+	border-right: 1px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.06));
+	display: flex;
+	flex-direction: column;
+	padding: 14px 12px;
+	gap: 18px;
+	min-height: 0;
+}
+
+.shell-brand {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	padding: 0 4px;
+}
+
+.shell-mark {
+	width: 22px;
+	height: 22px;
+	border-radius: 6px;
+	background: var(--dsw-alias-brand-primary, #a093fb);
+	color: var(--dsw-alias-brand-text, #0d0f14);
+	display: grid;
+	place-items: center;
+	font-size: 12px;
+	font-weight: 700;
+	flex: 0 0 auto;
+}
+
+.shell-brand-name {
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+}
+
+.shell-nav {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.shell-nav-item {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	padding: 6px 8px;
+	border-radius: 8px;
+	color: var(--dsw-alias-label-secondary, #bec1c7);
+	font-size: 12.5px;
+}
+
+.shell-nav-item.is-on {
+	background: var(--dsw-specific-sidebar-nav-item-active, rgba(255, 255, 255, 0.085));
+	color: var(--dsw-alias-label-primary, #edf0f7);
+}
+
+.shell-nav-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: currentColor;
+	opacity: 0.55;
+}
+
+.shell-side-foot {
+	margin-top: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+	padding: 9px 4px 0;
+	border-top: 1px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.06));
+	font-size: 11px;
+	color: var(--dsw-alias-label-tertiary, #a1a4aa);
+}
+
+.shell-main {
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.shell-top {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 13px 20px;
+	border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.06));
+}
+
+.shell-title {
+	font-size: 13.5px;
+	font-weight: 600;
+}
+
+.shell-chip {
+	font-size: 11px;
+	padding: 3px 9px;
+	border-radius: 999px;
+	border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.1));
+	color: var(--dsw-alias-label-secondary, #bec1c7);
+	white-space: nowrap;
+}
+
+.shell-thread {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	padding: 20px;
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+}
+
+/*
+ * Message body text sits directly on the washed canvas with no card behind it —
+ * the arrangement a wallpaper can actually ruin. If the readability floor were
+ * removed, this is the text that would go unreadable first.
+ */
+.shell-msg {
+	display: flex;
+	gap: 11px;
+	max-width: 760px;
+}
+
+.shell-msg.is-me {
+	align-self: flex-end;
+	flex-direction: row-reverse;
+}
+
+.shell-avatar {
+	width: 24px;
+	height: 24px;
+	border-radius: 7px;
+	flex: 0 0 auto;
+	display: grid;
+	place-items: center;
+	font-size: 10.5px;
+	font-weight: 600;
+	background: var(--dsw-specific-bubble-highlight, rgba(160, 147, 251, 0.16));
+	color: var(--dsw-alias-brand-primary, #a093fb);
+}
+
+.shell-msg.is-me .shell-avatar {
+	background: var(--dsw-alias-brand-primary, #a093fb);
+	color: var(--dsw-alias-brand-text, #0d0f14);
+}
+
+.shell-bubble {
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+}
+
+.shell-msg.is-me .shell-bubble {
+	align-items: flex-end;
+	text-align: right;
+}
+
+.shell-who {
+	font-size: 11.5px;
+	color: var(--dsw-alias-label-tertiary, #a1a4aa);
+}
+
+.shell-text {
+	font-size: 12.5px;
+	color: var(--dsw-alias-label-primary, #edf0f7);
+}
+
+.shell-text-muted {
+	color: var(--dsw-alias-label-secondary, #bec1c7);
+}
+
+.shell-code {
+	font-family: var(--pg-mono);
+	font-size: 11.5px;
+	background: var(--dsw-alias-markdown-code-block, rgba(1, 2, 4, 0.42));
+	border: 1px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.06));
+	border-radius: 8px;
+	padding: 9px 11px;
+	white-space: pre;
+	overflow-x: auto;
+	color: var(--dsw-alias-label-secondary, #bec1c7);
+}
+
+.shell-composer {
+	margin: 0 20px 18px;
+	border-radius: 12px;
+	border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.1));
+	background: var(--dsw-specific-input-major, rgba(255, 255, 255, 0.075));
+	padding: 11px 13px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	color: var(--dsw-alias-label-tertiary, #a1a4aa);
+	font-size: 12.5px;
+}
+
+.shell-send {
+	width: 24px;
+	height: 24px;
+	border-radius: 7px;
+	background: var(--dsw-alias-brand-primary, #a093fb);
+	color: var(--dsw-alias-brand-text, #0d0f14);
+	display: grid;
+	place-items: center;
+	font-size: 12px;
+	flex: 0 0 auto;
+}
+
+/*
+ * The stage caption. Fixed to the bottom-left, on its own opaque chip, because
+ * it has to stay readable at every wash strength — it is the label that says
+ * what you are looking at.
+ */
+.pg-caption {
+	position: absolute;
+	left: 12px;
+	bottom: 12px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 5px 10px;
+	border-radius: 999px;
+	background: rgba(8, 9, 12, 0.74);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	color: #e7e9f0;
+	font-size: 11px;
+	backdrop-filter: blur(8px);
+	pointer-events: none;
+	z-index: 2;
+}
+
+.pg-caption b {
+	font-weight: 600;
+}
+
+.pg-live {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--pg-ok);
+	box-shadow: 0 0 0 3px rgba(99, 200, 138, 0.18);
+}
+
+/* ── right: preview chrome ───────────────────────────────────────────────── */
+
+.pg-side {
+	min-width: 0;
+	background: var(--pg-panel);
+	border-left: 1px solid var(--pg-border);
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.pg-side-head {
+	padding: 14px 16px 12px;
+	border-bottom: 1px solid var(--pg-border);
+	flex: 0 0 auto;
+}
+
+.pg-eyebrow {
+	font-size: 10.5px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--pg-text-3);
+}
+
+.pg-title {
+	font-size: 15px;
+	font-weight: 650;
+	margin-top: 2px;
+}
+
+.pg-sub {
+	font-size: 11.5px;
+	color: var(--pg-text-2);
+	margin-top: 3px;
+}
+
+.pg-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	padding: 14px 16px 28px;
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+}
+
+.pg-block {
+	display: flex;
+	flex-direction: column;
+	gap: 9px;
+}
+
+.pg-block > .pg-block-title {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.pg-block-title h2 {
+	font-size: 11.5px;
+	font-weight: 650;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--pg-text-2);
+	margin: 0;
+}
+
+.pg-block-title span {
+	font-size: 11px;
+	color: var(--pg-text-3);
+}
+
+.pg-card {
+	border: 1px solid var(--pg-border);
+	border-radius: 11px;
+	background: var(--pg-panel-2);
+	padding: 11px 12px;
+}
+
+/*
+ * The mounted settings section. `.lumen-root` brings its own tokens and layout;
+ * this only supplies the surface it sits on — exactly the relationship the host
+ * has with it, where the section is a panel the shell owns the frame of.
+ */
+.pg-settings-mount {
+	border: 1px solid var(--pg-border);
+	border-radius: 11px;
+	background: var(--pg-panel-2);
+	padding: 12px 13px;
+}
+
+.pg-ctl {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	min-height: 26px;
+}
+
+.pg-ctl-label {
+	font-size: 12px;
+	color: var(--pg-text);
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
+}
+
+.pg-ctl-label small {
+	font-size: 10.5px;
+	color: var(--pg-text-3);
+	line-height: 1.45;
+}
+
+.pg-btns {
+	display: flex;
+	gap: 5px;
+	flex: 0 0 auto;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.pg-btn {
+	font: inherit;
+	font-size: 11.5px;
+	color: var(--pg-text);
+	background: var(--pg-panel-2);
+	border: 1px solid var(--pg-border);
+	border-radius: 7px;
+	padding: 4px 9px;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.pg-btn:hover {
+	border-color: var(--pg-border-2);
+	background: var(--pg-bg);
+}
+
+.pg-btn.is-on {
+	background: var(--pg-accent);
+	border-color: transparent;
+	color: #fff;
+}
+
+.pg-btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.pg-seg {
+	display: inline-flex;
+	border: 1px solid var(--pg-border);
+	border-radius: 8px;
+	overflow: hidden;
+}
+
+.pg-seg button {
+	font: inherit;
+	font-size: 11.5px;
+	color: var(--pg-text-2);
+	background: transparent;
+	border: none;
+	padding: 4px 10px;
+	cursor: pointer;
+}
+
+.pg-seg button + button {
+	border-left: 1px solid var(--pg-border);
+}
+
+.pg-seg button.is-on {
+	background: var(--pg-accent);
+	color: #fff;
+}
+
+.pg-kv {
+	display: grid;
+	grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+	gap: 3px 12px;
+	font-size: 11.5px;
+}
+
+.pg-kv dt {
+	color: var(--pg-text-3);
+	white-space: nowrap;
+}
+
+.pg-kv dd {
+	margin: 0;
+	color: var(--pg-text);
+	font-family: var(--pg-mono);
+	font-size: 11px;
+	overflow-wrap: anywhere;
+}
+
+.pg-kv dd.is-warn {
+	color: var(--pg-warn);
+}
+
+.pg-kv dd.is-ok {
+	color: var(--pg-ok);
+}
+
+.pg-swatch {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	border-radius: 3px;
+	border: 1px solid var(--pg-border-2);
+	vertical-align: -1px;
+	margin-right: 5px;
+}
+
+.pg-note {
+	font-size: 11px;
+	color: var(--pg-text-3);
+	line-height: 1.55;
+}
+
+.pg-log {
+	font-family: var(--pg-mono);
+	font-size: 10.5px;
+	line-height: 1.6;
+	color: var(--pg-text-2);
+	background: var(--pg-bg);
+	border: 1px solid var(--pg-border);
+	border-radius: 8px;
+	padding: 8px 10px;
+	max-height: 148px;
+	overflow: auto;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.pg-log:empty::before {
+	content: "(no warnings)";
+	color: var(--pg-text-3);
+}
+
+.pg-timeline {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.pg-timeline-row {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	font-size: 11.5px;
+}
+
+.pg-timeline-bar {
+	height: 5px;
+	border-radius: 3px;
+	background: var(--pg-accent);
+	flex: 0 0 auto;
+	min-width: 3px;
+}
+
+.pg-timeline-row.is-next .pg-timeline-bar {
+	background: var(--pg-ok);
+}
+
+.pg-timeline-stamp {
+	font-family: var(--pg-mono);
+	font-size: 11px;
+	color: var(--pg-text-2);
+	flex: 0 0 auto;
+}
+
+.pg-timeline-in {
+	color: var(--pg-text-3);
+	font-size: 11px;
+}
+
+.pg-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	font-size: 10.5px;
+	padding: 2px 7px;
+	border-radius: 999px;
+	border: 1px solid var(--pg-border);
+	color: var(--pg-text-2);
+	font-family: var(--pg-mono);
+}
+
+.pg-badge.is-ok {
+	color: var(--pg-ok);
+	border-color: color-mix(in srgb, var(--pg-ok) 40%, transparent);
+}
+
+.pg-badge.is-warn {
+	color: var(--pg-warn);
+	border-color: color-mix(in srgb, var(--pg-warn) 40%, transparent);
+}
+
+.pg-rows {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.pg-recipe-strip {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 5px;
+}
+
+.pg-recipe {
+	width: 58px;
+	height: 34px;
+	border-radius: 7px;
+	border: 1px solid var(--pg-border);
+	background-size: cover;
+	background-position: center;
+	cursor: pointer;
+	padding: 0;
+}
+
+.pg-recipe.is-on {
+	outline: 2px solid var(--pg-accent);
+	outline-offset: 1px;
+}
+
+@media (max-width: 1180px) {
+	.pg {
+		grid-template-columns: minmax(0, 1fr) 404px;
+	}
+}
+
+@media (max-width: 900px) {
+	.pg {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: 46vh auto;
+	}
+	.pg-side {
+		border-left: none;
+		border-top: 1px solid var(--pg-border);
+	}
+}

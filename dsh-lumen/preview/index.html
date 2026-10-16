@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh-lumen — 交互预览 / interactive preview</title>
+<link rel="icon" href="../icon.svg">
+<link rel="stylesheet" href="./shell.css">
+</head>
+<body>
+<div id="pg-root">
+<div class="pg">
+
+	<!-- ── left: a mock DSH shell, so the wallpaper has something to sit behind ── -->
+	<div class="pg-stage">
+		<div class="shell">
+			<aside class="shell-side">
+				<div class="shell-brand">
+					<span class="shell-mark">D</span>
+					<span class="shell-brand-name">DeepSeek Harness</span>
+				</div>
+				<nav class="shell-nav">
+					<div class="shell-nav-item is-on"><span class="shell-nav-dot"></span>新对话</div>
+					<div class="shell-nav-item"><span class="shell-nav-dot"></span>历史记录</div>
+					<div class="shell-nav-item"><span class="shell-nav-dot"></span>资料库</div>
+					<div class="shell-nav-item"><span class="shell-nav-dot"></span>专家中心</div>
+				</nav>
+				<div class="shell-side-foot">
+					<div>本地会话 · 未同步</div>
+					<div>v0.2.0-rc.2</div>
+				</div>
+			</aside>
+
+			<main class="shell-main">
+				<header class="shell-top">
+					<span class="shell-title">壁纸插件的可读性下限</span>
+					<span class="pg-caption">
+						<span class="pg-live"></span>
+						<span>模拟外壳 · 画布用 <b>--dsw-alias-bg-base</b>（被插件覆写为半透明）</span>
+					</span>
+					<span class="shell-chip">deepseek-v4-flash</span>
+				</header>
+
+				<div class="shell-thread">
+					<div class="shell-msg is-me">
+						<span class="shell-avatar">你</span>
+						<div class="shell-bubble">
+							<span class="shell-who">你</span>
+							<span class="shell-text">把背景换成一张亮一点的图，还能看清字吗？</span>
+						</div>
+					</div>
+
+					<div class="shell-msg">
+						<span class="shell-avatar">D</span>
+						<div class="shell-bubble">
+							<span class="shell-who">DeepSeek</span>
+							<span class="shell-text">能。画布上的半透明遮罩不是用户自己设的那个数字，而是两个值里取大的那个：一个是你拖出来的不透明度，另一个是按 WCAG AA（对比度 4.5:1）对这张图算出来的下限。</span>
+							<span class="shell-text shell-text-muted">也就是说：向右拖可以把画面压得更暗，向左拖到某个位置就停住了——停住的位置随壁纸变亮而右移。</span>
+						</div>
+					</div>
+
+					<div class="shell-msg">
+						<span class="shell-avatar">D</span>
+						<div class="shell-bubble">
+							<span class="shell-who">DeepSeek</span>
+							<span class="shell-text shell-text-muted">这段正文直接落在被遮罩的画布上，背后没有卡片衬底——如果下限被取消，最先看不清的就是它。</span>
+							<pre class="shell-code">wash.effectiveAlpha = max(wash.opacity, alphaForContrast(base, label, imageLuminance, 4.5))</pre>
+						</div>
+					</div>
+
+					<div class="shell-msg is-me">
+						<span class="shell-avatar">你</span>
+						<div class="shell-bubble">
+							<span class="shell-who">你</span>
+							<span class="shell-text">轮播能不能不用等一小时那种？</span>
+						</div>
+					</div>
+
+					<div class="shell-msg">
+						<span class="shell-avatar">D</span>
+						<div class="shell-bubble">
+							<span class="shell-who">DeepSeek</span>
+							<span class="shell-text">右侧「调度器演示」里可以把时钟往前推——整点、每日、按间隔、每次会话四种模式都能立刻看到结果，包括睡眠后跳过多次只前进一格的那种情况。</span>
+						</div>
+					</div>
+				</div>
+
+				<div class="shell-composer">
+					<span>给 DeepSeek 发送消息…</span>
+					<span class="shell-send">↑</span>
+				</div>
+			</main>
+		</div>
+
+		<div class="pg-caption">
+			<span class="pg-live"></span>
+			<span>模拟 DSH 外壳 · 画布使用 <b>--dsw-alias-bg-base</b>（被本插件覆写为半透明）</span>
+		</div>
+	</div>
+
+	<!-- ── right: preview chrome. Its own palette; never washed. ── -->
+	<div class="pg-side">
+		<div class="pg-side-head">
+			<div class="pg-eyebrow">dsh-lumen · interactive preview</div>
+			<div class="pg-title">流转壁纸插件 · 真实产物预览</div>
+			<div class="pg-sub">下面是 <code>lib/client.js</code> 原样运行的结果：外壳是模拟的，插件不是。预览外壳只有中文；插件自带中英两套词典，右上切换可验证。</div>
+			<div class="pg-sub" style="margin-top:6px">
+				开屏动画不在这一页上：它由宿主注入到外壳的文档里，而这一页不是外壳的文档。
+				<a href="./boot.html" style="color:var(--pg-accent)">打开外壳 index 替身 →</a>
+			</div>
+
+			<div class="pg-ctl" style="margin-top:11px">
+				<span class="pg-ctl-label">宿主主题<small>切换会重算遮罩</small></span>
+				<div class="pg-btns" id="pg-theme"></div>
+			</div>
+			<div class="pg-ctl" style="margin-top:7px">
+				<span class="pg-ctl-label">界面语言<small>重新引导后生效</small></span>
+				<div class="pg-btns" id="pg-lang"></div>
+			</div>
+
+			<div class="pg-btns" style="margin-top:11px;justify-content:flex-start" id="pg-tabs">
+				<button class="pg-btn is-on" data-tab="panel" type="button">插件面板</button>
+				<button class="pg-btn" data-tab="sched" type="button">调度器演示</button>
+				<button class="pg-btn" data-tab="diag" type="button">诊断</button>
+			</div>
+		</div>
+
+		<div class="pg-body">
+			<!-- tab: the real settings panel, mounted through the real slots path -->
+			<section class="pg-block" id="pg-tab-panel">
+				<div class="pg-block-title"><h2>设置 → 外观 → 壁纸</h2><span>slots.renderSlot(&#34;settings.section&#34;)</span></div>
+				<div class="pg-settings-mount" id="pg-settings-mount"></div>
+				<div class="pg-note" id="pg-mount-note"></div>
+			</section>
+
+			<!-- tab: the rotation scheduler, driven by a shiftable clock -->
+			<section class="pg-block" id="pg-tab-sched" hidden>
+				<div class="pg-block-title"><h2>先准备一个轮播</h2><span>写入的就是面板用的那个 store</span></div>
+				<div class="pg-card">
+					<div class="pg-ctl">
+						<span class="pg-ctl-label">一键写入示例配置<small>轮播开 · 4 张配方 · 顺序 · 每小时整点</small></span>
+						<div class="pg-btns">
+							<button class="pg-btn" id="pg-demo" type="button">写入示例</button>
+						</div>
+					</div>
+					<div class="pg-note" style="margin-top:8px">
+						点完之后切到「插件面板」看：模式、播放列表、触发方式都会同步变成上面这份配置——两边读写的是同一个状态，
+						面板不是预览做的仿制品。
+					</div>
+				</div>
+
+				<div class="pg-block-title" style="margin-top:12px"><h2>时钟偏移</h2><span>只改「现在」，不改时长</span></div>
+				<div class="pg-card">
+					<div class="pg-ctl">
+						<span class="pg-ctl-label">把插件的时钟往前推<small>推到越过触发点后，会走一次「追赶」路径</small></span>
+						<div class="pg-btns" id="pg-clock"></div>
+					</div>
+					<div class="pg-ctl" style="margin-top:9px">
+						<span class="pg-ctl-label">任意偏移（分钟）<small>负数即向过去</small></span>
+						<div class="pg-btns">
+							<input class="pg-btn" id="pg-clock-input" type="number" value="45" step="5" style="width:78px;text-align:right">
+							<button class="pg-btn" id="pg-clock-apply" type="button">应用</button>
+							<button class="pg-btn" id="pg-clock-reset" type="button">归零</button>
+						</div>
+					</div>
+					<dl class="pg-kv" style="margin-top:10px">
+						<dt>真实时间</dt><dd id="k-clock-real">—</dd>
+						<dt>插件看到的时间</dt><dd id="k-clock-plugin">—</dd>
+						<dt>偏移</dt><dd id="k-clock-offset">—</dd>
+					</dl>
+				</div>
+
+				<div class="pg-block-title" style="margin-top:12px"><h2>调度状态</h2><span id="pg-sched-source">scheduler.planResume</span></div>
+				<div class="pg-card">
+					<dl class="pg-kv">
+						<dt>轮播</dt><dd id="k-sched-mode">—</dd>
+						<dt>触发方式</dt><dd id="k-sched-kind">—</dd>
+						<dt>顺序</dt><dd id="k-sched-order">—</dd>
+						<dt>下一次</dt><dd id="k-sched-next">—</dd>
+						<dt>倒计时</dt><dd id="k-sched-in">—</dd>
+						<dt>本次唤醒</dt><dd id="k-sched-plan">—</dd>
+						<dt>播放列表</dt><dd id="k-sched-playlist">—</dd>
+					</dl>
+					<div class="pg-timeline" id="pg-timeline" style="margin-top:9px"></div>
+				</div>
+				<div class="pg-note">
+					这里没有对调度器打补丁。条目里的时间戳、倒计时与 <code>setTimeout</code> 延迟都由
+					<code>Date.now()</code> 与 <code>new Date(y, m, d, …)</code> 相减得到，而常量偏移对两者的差没有影响——
+					所以只把「现在」往前挪，算术全部保持精确。
+				</div>
+			</section>
+
+			<!-- tab: read-only diagnostics -->
+			<section class="pg-block" id="pg-tab-diag" hidden>
+				<div class="pg-block-title"><h2>运行状态</h2><span id="pg-status-badge"></span></div>
+				<div class="pg-card">
+					<dl class="pg-kv">
+						<dt>插件</dt><dd id="k-status">—</dd>
+						<dt>构建</dt><dd id="k-build">—</dd>
+						<dt>schema</dt><dd id="k-schema">—</dd>
+						<dt>面板挂载</dt><dd id="k-panel">—</dd>
+						<dt>引擎 DOM</dt><dd id="k-dom">—</dd>
+						<dt>减弱动效</dt><dd id="k-motion">—</dd>
+					</dl>
+				</div>
+
+				<div class="pg-block-title" style="margin-top:12px"><h2>当前壁纸与遮罩</h2><span>engine.inspect()</span></div>
+				<div class="pg-card">
+					<dl class="pg-kv">
+						<dt>当前条目</dt><dd id="k-item">—</dd>
+						<dt>来源</dt><dd id="k-item-kind">—</dd>
+						<dt>你的不透明度</dt><dd id="k-wash-chosen">—</dd>
+						<dt>算出的下限</dt><dd id="k-wash-required">—</dd>
+						<dt>实际生效</dt><dd id="k-wash-effective">—</dd>
+						<dt>自动压暗</dt><dd id="k-wash-autodim">—</dd>
+						<dt>可读性下限</dt><dd id="k-wash-readability">—</dd>
+					</dl>
+				</div>
+
+				<div class="pg-block-title" style="margin-top:12px"><h2>持久化</h2><span>两层：种子 + 宿主文件</span></div>
+				<div class="pg-card">
+					<dl class="pg-kv">
+						<dt>宿主通道</dt><dd id="k-host">—</dd>
+						<dt>宿主持有的键</dt><dd id="k-host-keys">—</dd>
+						<dt>本地种子</dt><dd id="k-seed">—</dd>
+						<dt>状态文件</dt><dd id="k-state-file">—</dd>
+						<dt>最近错误</dt><dd id="k-last-error">—</dd>
+					</dl>
+				</div>
+
+				<div class="pg-block-title" style="margin-top:12px"><h2>宿主令牌</h2><span>插件只覆写 2 枚</span></div>
+				<div class="pg-card">
+					<dl class="pg-kv">
+						<dt>主题</dt><dd id="k-theme">—</dd>
+						<dt>bg-base（原始）</dt><dd id="k-token-raw">—</dd>
+						<dt>bg-base（合成后）</dt><dd id="k-token-washed">—</dd>
+						<dt>覆盖层</dt><dd id="k-override-sources">—</dd>
+						<dt>实际被改动的 token</dt><dd id="k-override-tokens">—</dd>
+						<dt>已注册 slot</dt><dd id="k-slots">—</dd>
+						<dt>locale 命名空间</dt><dd id="k-locales">—</dd>
+					</dl>
+				</div>
+
+				<div class="pg-block-title" style="margin-top:12px"><h2>生命周期</h2><span>卸载与重新引导</span></div>
+				<div class="pg-card">
+					<div class="pg-ctl">
+						<span class="pg-ctl-label">dispose → apply<small>验证清理是否干净：DOM、遮罩层、订阅都应消失</small></span>
+						<div class="pg-btns">
+							<button class="pg-btn" id="pg-reboot" type="button">重新引导</button>
+							<button class="pg-btn" id="pg-dispose" type="button">仅卸载</button>
+						</div>
+					</div>
+				</div>
+
+				<div class="pg-block-title" style="margin-top:12px"><h2>控制台告警</h2><span id="pg-warn-count">0</span></div>
+				<div class="pg-log" id="pg-log"></div>
+				<div class="pg-note">
+					这里为空才正常：插件的浏览器半边被写成永不抛错，任何异常都会降级成一条告警 + 功能缺失，而不是让整个外壳起不来。
+				</div>
+			</section>
+		</div>
+	</div>
+
+</div>
+</div>
+
+<!-- The order of these three is load-bearing. See the header of harness.js. -->
+<script src="./harness.js"></script>
+<script src="../lib/client.js"></script>
+<script src="./preview.js"></script>
+</body>
+</html>

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-dsh-lumen-shell-document>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh-lumen — 外壳 index 替身 / shell index stand-in</title>
+<link rel="icon" href="../icon.svg">
+<link rel="stylesheet" href="./shell.css">
+<style>
+/*
+ * Page-local, and deliberately not in shell.css: these three rules exist to
+ * turn the preview's mock shell into a full-viewport document, which is a fact
+ * about *this* stand-in rather than about the mock shell itself.
+ */
+html, body { height: 100%; }
+#root { height: 100%; display: flex; flex-direction: column; }
+.shell-boot {
+	height: 100%;
+	display: grid;
+	place-items: center;
+	background: var(--dsw-alias-bg-base, #111317);
+	color: var(--dsw-alias-label-tertiary, #a1a4aa);
+	font-size: 13px;
+}
+.boot-bar {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 7px 12px;
+	background: var(--pg-panel);
+	border-top: 1px solid var(--pg-border);
+	color: var(--pg-text-2);
+	font-size: 12px;
+}
+.boot-bar code { font-family: var(--pg-mono); font-size: 11px; color: var(--pg-text); }
+.boot-bar a { color: var(--pg-accent); margin-left: auto; }
+</style>
+</head>
+<body>
+
+<!--
+	THE SHELL'S INDEX, AS A STAND-IN.
+
+	The real thing is a document the host serves with two extra rows spliced into
+	its head: a stylesheet that covers the application and a script that is the
+	bounded way out of that cover. Everything else about it — a `#root` whose
+	first child is the framework-free boot kernel, and the app bundle replacing
+	that child once React hydrates — is reproduced here, which is what makes this
+	page able to show the splash at all.
+
+	`data-dsh-lumen-shell-document` on `<html>` is what tells the preview server
+	to splice the rows in. `preview/index.html` does not carry it, so the main
+	preview is never covered by a splash.
+
+	`[data-dsh-boot]` is not decoration. `lib/index.js` has no idea this page
+	exists; the marker comes from the host's own `BootHandoff`, which renders the
+	boot kernel through exactly one commit and then hands the container to the
+	app. `boot.js` performs that same handoff, so the browser half's cover release
+	is timed against the real signal rather than against a number this page made
+	up.
+-->
+<div id="root">
+	<div class="shell-boot" data-dsh-boot><span>正在启动… / starting…</span></div>
+</div>
+
+<!--
+	The app tree, held inert until the handoff. A `<template>`'s contents are
+	never rendered and never parsed as DOM, which is what keeps `#root` holding
+	the boot kernel alone until `boot.js` swaps it in.
+-->
+<template id="shell-app">
+	<div class="shell">
+		<aside class="shell-side">
+			<div class="shell-brand">
+				<span class="shell-mark">D</span>
+				<span class="shell-brand-name">DeepSeek Harness</span>
+			</div>
+			<nav class="shell-nav">
+				<div class="shell-nav-item is-on"><span class="shell-nav-dot"></span>新对话</div>
+				<div class="shell-nav-item"><span class="shell-nav-dot"></span>历史记录</div>
+				<div class="shell-nav-item"><span class="shell-nav-dot"></span>资料库</div>
+				<div class="shell-nav-item"><span class="shell-nav-dot"></span>专家中心</div>
+			</nav>
+			<div class="shell-side-foot">
+				<div>本地会话 · 未同步</div>
+				<div>v0.2.0-rc.2</div>
+			</div>
+		</aside>
+
+		<main class="shell-main">
+			<header class="shell-top">
+				<span class="shell-title">外壳已接管</span>
+				<span class="shell-chip">deepseek-v4-flash</span>
+			</header>
+			<div class="shell-thread">
+				<div class="shell-msg">
+					<span class="shell-avatar">D</span>
+					<div class="shell-bubble">
+						<span class="shell-who">DeepSeek</span>
+						<span class="shell-text">到这里，开屏遮罩已经交出去了。你刚才看到的那一层是宿主注入的，不是我这一页画的。</span>
+						<span class="shell-text shell-text-muted">页面文档里多出来的那两行——一个 <code>&lt;style&gt;</code>、一个 <code>&lt;script&gt;</code>——是 <code>lib/index.js</code> 通过 <code>webserver/index-inject</code> 放进来的。预览服务器自己拼的第二份镜像已经被删掉了，它现在直接挂载真实的宿主半边。</span>
+					</div>
+				</div>
+			</div>
+			<div class="shell-composer">
+				<span>给 DeepSeek 发送消息…</span>
+				<span class="shell-send">↑</span>
+			</div>
+		</main>
+	</div>
+	<div class="boot-bar">
+		<span>外壳 index 替身 · <code>preview/boot.html</code></span>
+		<span id="boot-status">—</span>
+		<a href="./index.html">回到交互预览 →</a>
+	</div>
+</template>
+
+<!-- Same three files, same order, as the real shell's bundle. See harness.js. -->
+<script src="./harness.js"></script>
+<script src="../lib/client.js"></script>
+<script src="./boot.js"></script>
+</body>
+</html>

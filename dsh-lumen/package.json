@@ -1,0 +1,96 @@
+{
+  "name": "dsh-lumen",
+  "version": "1.0.0",
+  "description": "DeepSeek Harness 流转壁纸插件（Lumen）：12 套纯程序化生成的弥散光壁纸 + 本地图/URL/渐变自定义 + 轮播调度器（按间隔 / 整点 / 每日 / 每次会话自动换图，带交叉淡入）。零图片素材、零版权风险，纯原生 token 实现。Wallpaper rotation for DSH with procedurally generated built-in wallpapers and a rotation scheduler.",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "icon": "./icon.svg",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./locale/zh.json": "./locale/zh.json",
+    "./locale/en.json": "./locale/en.json"
+  },
+  "files": [
+    "icon.svg",
+    "locale",
+    "lib/index.js",
+    "lib/client.js",
+    "lib/types",
+    "cordis.patch.yml",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "dsh-desktop",
+    "plugin",
+    "wallpaper",
+    "background",
+    "rotation",
+    "scheduler",
+    "procedural",
+    "generative",
+    "壁纸",
+    "轮播",
+    "美化"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node scripts/build.cjs",
+    "build:check": "node scripts/build.cjs --check",
+    "typecheck": "node scripts/typecheck.cjs",
+    "test": "node --test \"tests/**/*.test.cjs\"",
+    "verify": "node scripts/build.cjs --check && node scripts/typecheck.cjs && node --test \"tests/**/*.test.cjs\"",
+    "preview": "node scripts/serve.cjs"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-theme",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1 || >=4.0.5-0 <5",
+    "@deepseek-ai/dsh-client-locale": ">=0.1.0-rc.6 <0.3.0-0",
+    "@deepseek-ai/dsh-client-store": ">=0.1.0-rc.6 <0.3.0-0",
+    "@deepseek-ai/dsh-client-runtime": ">=0.1.0-rc.6 <0.3.0-0",
+    "@deepseek-ai/dsh-client-ui-slots": ">=0.1.0-rc.6 <0.3.0-0",
+    "@deepseek-ai/dsh-client-ui-settings": ">=0.1.0-rc.6 <0.3.0-0",
+    "@deepseek-ai/dsh-client-ui-theme": ">=0.1.0-rc.6 <0.3.0-0",
+    "react": "^18.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": { "optional": true },
+    "@deepseek-ai/dsh-client-locale": { "optional": true },
+    "@deepseek-ai/dsh-client-store": { "optional": true },
+    "@deepseek-ai/dsh-client-runtime": { "optional": true },
+    "@deepseek-ai/dsh-client-ui-slots": { "optional": true },
+    "@deepseek-ai/dsh-client-ui-settings": { "optional": true },
+    "@deepseek-ai/dsh-client-ui-theme": { "optional": true },
+    "react": { "optional": true }
+  },
+  "author": "dsh-lumen contributors"
+}

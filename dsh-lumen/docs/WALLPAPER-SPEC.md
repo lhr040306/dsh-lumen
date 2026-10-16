@@ -1,0 +1,582 @@
+# 壁纸规格 · dsh-lumen
+
+本文是 `dsh-lumen` 的参考规格：壁纸条目、12 套配方、微调参数、洗色与可读性下限、本地图片的亮度实测、轮播调度的全部常量、状态字段、以及持久化格式。
+
+其中的数字都不是从注释里抄的，而是从 `src/` 里的导出常量与测试用的边界值读出来的。改动源码后请一并更新本文（`tests/state.test.cjs` 会断言持久化字段列表与状态自身字段列表完全一致，那是最容易漂移的一处）。
+
+**版本**：`schema 1` · 插件 `1.0.0`
+
+---
+
+## 一、术语
+
+| 术语 | 含义 |
+| --- | --- |
+| **配方（recipe）** | 一套参数化的程序化壁纸生成规则，如 `drift` |
+| **壁纸条目（item）** | 播放列表或当前壁纸的一项，可能是一个配方、一张本地图、一个地址或一条渐变 |
+| **种子（seed）** | 配方的变化选择器。`"default"` 表示该配方的规范渲染 |
+| **微调（tuning）** | 三个全局旋钮：色相、柔度、颗粒 |
+| **洗色（wash）** | 把主题画布色换成同色半透明版本的那一层，壁纸靠它透出来 |
+| **可读性下限** | 为满足 WCAG AA 对比度而对洗色 alpha 施加的强制抬升 |
+| **实测亮度（luminance）** | 一条目携带的相对亮度 0–1，只有本地图片在导入时真正测过；`null` 表示"未测量" |
+| **位置（position）** | 主体在视口里的九点定位之一，写入 `background-position` |
+| **轮播（rotation）** | 按调度在播放列表里自动前进 |
+
+---
+
+## 二、壁纸条目
+
+### 2.1 形状
+
+```ts
+interface WallpaperItem {
+	id: string;                // 形如 itm_<base36 时间戳>_<序号>
+	kind: "recipe" | "image" | "url" | "gradient";
+	ref: string;               // 含义随 kind 变化，见下表
+	seed: string;              // 配方的变化选择器；非配方条目为 "default"
+	luminance: number | null;  // 实测相对亮度 0–1；未测量为 null
+}
+```
+
+### 2.2 `ref` 的含义
+
+| `kind` | `ref` 是什么 | 约束 |
+| --- | --- | --- |
+| `recipe` | 配方 id，如 `drift`。未知 id 回退到 `drift` | 必须是 `RECIPE_IDS` 之一 |
+| `image` | `data:image/...;base64,...` | ≤ **8388608** 字符（8 MiB）；必须是安全的 data image |
+| `url` | `http` / `https` 地址 | 仅这两个协议 |
+| `gradient` | 一条 CSS 线性渐变 | ≤ **600** 字符；通过 `isSafeGradient` 检查 |
+
+`ref` 在写入前都会过一遍安全判定（`isSafeDataImage` / `isSafeWallpaperUrl` / `isSafeGradient` / `isSafeBackgroundImage`），非法的值会被拒绝而不是渲染。这是为了挡住从存储里被改过的值直接拼进 CSS。
+
+### 2.3 `luminance` 的含义
+
+只有**本地图片**会被实测（`image.sampleLuminance` 在导入时读一次 64×64 的采样），因此：
+
+| 条目 | `luminance` |
+| --- | --- |
+| `image`，刚导入 | 实测值，保留 3 位小数 |
+| `image`，导入失败或导入前的旧数据 | `null` |
+| `url` | 始终 `null`（渲染路径同步，且跨域图片会污染 canvas） |
+| `recipe` / `gradient` | 始终 `null`（亮度由 `estimateImageLuminance` 现算） |
+
+`null` 与 `0` 的区别是**语义性的**，不能互相转换：`null` 表示"没测量，请回退"，引擎会退回中性常数 `NEUTRAL_LUMINANCE`（0.42）；而 `0` 表示"纯黑"，是可读性下限唯一取不到有效值的极端点。`normalizeLuminance` 因此**严格按类型判定**——`Number(null)` 是 `0`，宽松转换会把"未测量"静默变成"纯黑"，正好关掉保护。
+
+`luminance` 存放在 JSON 文档里而不是和图片负载放一起：它只有几个字节，而放进 blob 键意味着图片字节一旦被清理，亮度也一起丢掉。
+
+### 2.4 播放入口
+
+- 播放列表最多 **24** 条（`MAX_PLAYLIST`）。
+- 条目 id 全局唯一，用于给图片负载定位存储键。
+- 一次导入 N 张图：第 1 张进 `single`，其余 N−1 张依次进播放列表；超出上限的部分被丢弃并**明确报数**，不静默吞掉。
+
+---
+
+## 三、内置配方
+
+12 套，深色 7 套、浅色 5 套。`scheme` 是设计取向，配方在另一套主题下同样能渲染——它只影响配方自身的取色倾向。
+
+| id | 中文 | English | scheme | softness 默认 | grain 默认 | complexity | tags |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `drift` | 弥散 | Drift | dark | 0.62 | 0.22 | 0.30 | calm, glow |
+| `aurora` | 极光 | Aurora | dark | 0.72 | 0.18 | 0.42 | cool, band |
+| `starfield` | 星野 | Starfield | dark | 0.30 | 0.30 | 0.55 | night, point |
+| `abyss` | 深海 | Abyss | dark | 0.66 | 0.16 | 0.34 | deep, cool |
+| `ember` | 暮霭 | Ember | dark | 0.70 | 0.26 | 0.44 | warm, dusk |
+| `mono` | 墨韵 | Mono | dark | 0.58 | 0.20 | 0.18 | minimal, neutral |
+| `lumen` | 光晕 | Halo | dark | 0.60 | 0.18 | 0.36 | focus, glow |
+| `ivory` | 象牙 | Ivory | light | 0.64 | 0.30 | 0.22 | warm, paper |
+| `mist` | 晨雾 | Mist | light | 0.78 | 0.16 | 0.20 | cool, calm |
+| `dune` | 沙丘 | Dune | light | 0.50 | 0.34 | 0.30 | warm, band |
+| `glacier` | 冰川 | Glacier | light | 0.44 | 0.22 | 0.34 | cool, facet |
+| `paper` | 纸纹 | Paper | light | 0.50 | 0.62 | 0.14 | paper, neutral |
+
+**`complexity`（0–1）** 不是给用户看的标签，是**自动弱化的输入**：它估计画面有多"花"，越高则洗色抬升越多。取值和实际观感对应：
+
+- `paper` 0.14 —— 近乎纯色，几乎不需要保护
+- `mono` 0.18 —— 极简
+- `starfield` 0.55 —— 最花，大量点状高光
+
+**`softness` / `grain` 默认值** 是每个配方单独标定的（`defaultSoftnessFor` / `defaultGrainFor`），不是全局常数。例如 `paper` 的 grain 默认 0.62（纸纹感靠它），而 `abyss` 只有 0.16（深色大面积渐变加颗粒会显脏）。
+
+---
+
+## 四、配方渲染
+
+### 4.1 接口
+
+```js
+renderRecipe({ recipeId, seed, tuning })
+// → { backgroundImage, backgroundColor, scheme, complexity, recipeId, seed }
+```
+
+| 输出字段 | 含义 |
+| --- | --- |
+| `backgroundImage` | 一串 CSS 渐变，可直接做 `background-image`。典型长度 300–800 字符 |
+| `backgroundColor` | 兜底底色，形如 `rgb(4, 12, 23)`，在所有渐变之下 |
+| `scheme` | `dark` / `light`，来自配方 |
+| `complexity` | 来自配方，供自动弱化使用 |
+
+未知的 `recipeId` 回退到 `drift`。**这个函数不抛异常**——任何输入都返回可渲染的值。
+
+### 4.2 生成的词汇表
+
+配方内部用四个 CSS 原语拼装：
+
+| 原语 | 参数 | 用途 |
+| --- | --- | --- |
+| `radial` | `{ x, y, rx, ry, color, alpha, fade }` | 一个弥散光斑。位置与半径都是百分比，所以对任意视口比例都成立 |
+| `linear` | `(angle, stops)` | 条带状渐变（`aurora` / `dune` 的带子） |
+| `vignette` | `(strength, inset)` | 四周压暗，把视线收到中间 |
+| `halo` | `(strength, inset)` | 中心提亮（`lumen` / `mono` 的聚焦感） |
+
+颜色由 `tone(L, chroma, hue)` 产生——在 **Oklab / OKLCH** 感知空间里取色，而不是在 HSL 里。这一点有实际意义：HSL 里"同样的明暗变化"在感知上并不均匀，一套配方换色相后会一半偏亮一半偏暗；Oklab 的 `L` 是感知均匀的，所以配方换色相后亮度观感保持一致。超出 sRGB 色域时对色度做二分收敛（`oklab.cjs`）。
+
+所有数值在拼接前都会被四舍五入到 **2 位小数**（`n()` 辅助函数），这是为了让产物字符串短、可缓存、且在测试里可做精确比对。
+
+### 4.3 种子
+
+`seed` 经 **FNV-1a** 字符串哈希后喂给 **mulberry32**，得到一个确定性的 `[0,1)` 随机流。同一个 `(recipeId, seed)` 永远给出同一串数值，因此：
+
+- 同一张图可以在别人机器上被精确复现（「复制种子」功能就是分享这个）；
+- 测试可以断言具体数值，而不必做模糊比较。
+
+`"default"` 表示走配方的规范路径（不消耗随机流）。
+
+`seed` 的归一化规则（`normalizeSeed`，上限 64 字符）：
+
+| 输入 | 结果 |
+| --- | --- |
+| 非空字符串 | 去首尾空白，截断到 64 字符 |
+| 数字 | 转成字符串，截断到 64 字符 |
+| 空串 / 纯空白 / `null` / 其他类型 | `"default"` |
+
+也就是说**任意非空字符串都是合法种子**（`"!!!"` 会原样保留），只有"空"才落到规范渲染。
+
+---
+
+## 五、微调（Tuning）
+
+三个全局旋钮，作用于**所有配方**，不是单个条目：
+
+| 字段 | 范围 | 中性值 | 含义 |
+| --- | --- | --- | --- |
+| `hue` | −180 … 180 | `0` | 色相旋转（度） |
+| `softness` | 0 … 1 | `0.5` | 光斑的弥散程度 |
+| `grain` | 0 … 1 | `0.35` | 胶片颗粒强度 |
+
+中性值集合是 `NEUTRAL_TUNING = { hue: 0, softness: 0.5, grain: 0.35 }`。
+
+注意 `softness` / `grain` 的**中性值**和每个配方的**默认值**是两回事：选中一个配方时，滑块的默认位置取该配方的标定值（第三节的表），而中性值用于"用户没有偏好时"的兜底与归一化落点。
+
+---
+
+## 六、洗色（Wash）
+
+### 6.1 字段
+
+| 字段 | 范围 | 默认 | 含义 |
+| --- | --- | --- | --- |
+| `opacity` | 0.20 … 0.98 | 0.82 | 用户**要求**的不透明度 |
+| `blur` | 0 … 60 | 0 | 模糊半径（px） |
+| `fit` | `cover` \| `contain` \| `blur` | `cover` | 填充方式 |
+| `position` | 见 6.7，共 9 个值 | `center` | 主体在视口里的位置 |
+| `autoDim` | boolean | `true` | 依 `complexity` 自动抬升 |
+| `readability` | boolean | `true` | 启用 WCAG AA 下限求解 |
+
+`washTouched`（状态字段，非洗色字段）记录用户**是否曾经手动调过**洗色。它存在的意义是：默认值将来可以改进，但已经调过的人不该被覆盖。
+
+### 6.2 生效值
+
+实际渲染用的 alpha **不一定等于** `opacity`：
+
+```
+effectiveAlpha = max(opacity, autoDim 抬升, readability 求解下限)
+```
+
+三条路径都可能抬升，从未有任一条会降低。用户设的值是**下界**，不是目标值。
+
+### 6.3 可读性下限的算法
+
+目标：`WCAG 2.1 AA`，即对比度 **≥ 4.5:1**（`CONTRAST_TARGET`）。
+
+1. 把壁纸归约成一个**相对亮度相同的中性灰**。亮度估计本身是线性域的加权平均，所以它在通道空间的等效平坦色是其平方根：`255 × linearToSrgb(clamp(L, 0, 1))`。
+2. 在**通道空间**（即 CSS `rgba()` 实际混合的那个空间）把该灰合成到画布色上。
+3. 对 alpha 做**二分**，12 次迭代 → 精度约 0.1%。
+4. 结果**向上取整**到 3 位小数。它是安全下限，向下舍入会交出一个达不到目标的 alpha。
+5. 若在 `ceiling` 处仍达不到目标，返回 `ceiling`——宁可给出一个做不到的诚实数字，也不假装达得到。
+
+二分成立的前提：合成色随 alpha 单调趋向画布色，而画布色与文字的对比度关于亮度是单峰的，所以**二分找到的第一个交点就是答案**。
+
+### 6.4 亮度估计
+
+`estimateImageLuminance` **自下而上按覆盖面积**合成，而不是数色标个数或取平均。
+
+理由：一层覆盖 80% 画面的亮色，比八层各覆盖 5% 的亮色危险得多。按层数计权会把后者的分数算得远高于前者——正好算反。
+
+估计**故意偏向高估亮度**：高估的代价是"洗色厚一点"，低估的代价是"用户看不清字"。代价不对称，处理方式就不该对称。
+
+### 6.5 本地图片的亮度实测
+
+上面的估计只适用于**能拿到画面描述**的壁纸：配方和渐变都是插件自己算出来的。**图片地址**拿不到——渲染路径是同步的，没有像素可看，跨域图片画进 canvas 还会污染画布、`getImageData` 直接抛错。所以远程图片只能沿用中性常数。
+
+本地图片不必猜。`prepareImage` 在导入时手里已经握着解码后的位图，把它画进一张 **64×64**（`LUMINANCE_SAMPLE_EDGE`）的新画布读一遍像素，只多一次绘制。测量发生在**编码循环之前**，因为亮度是"用户挑的那张图"的属性，不是"我们恰好施加的那次缩放"的属性。
+
+读数取**上四分位**（`DEFAULT_LUMINANCE_QUANTILE = 0.75`），nearest-rank 定义（`quantile`）：
+
+| 画面 | 平均值 | 上四分位 | 该用哪个 |
+| --- | --- | --- | --- |
+| 半黑半白 | 0.5 | **1.0** | 上四分位——按 0.5 求解，白的那半照样读不了 |
+| 纯中灰 128 | 0.216 | 0.216 | 一样——平坦画面上分位塌回平均值 |
+
+nearest-rank 而非插值：返回的永远是**某个像素真正有过的亮度**，而不是两个采样点的平均值——后者不落在任何像素上。全透明像素（`a === 0`）跳过，通道读不成有限数的样本也跳过；一个样本都不剩时返回 `NEUTRAL_LUMINANCE`。
+
+`sampleLuminance` 在任何失败路径上都返回 `null` 而不是猜一个值，`prepareImage` 把 `null` 原样放进结果的 `luminance` 字段。
+
+### 6.6 `fit` 三种模式
+
+| 模式 | 行为 |
+| --- | --- |
+| `cover` | 铺满并裁切，不露底 |
+| `contain` | 完整可见，极端宽高比下露出画布底色。**这是该模式的预期行为** |
+| `blur` | 一张放大且模糊的同图铺底 + 一张 `contain` 的前景图，消除蒙版边 |
+
+`blur` 模式会多出一层 `data-dsh-lumen="bleed"` 节点承载那张放大模糊的底图。
+
+### 6.7 位置与 `fit` 的关系
+
+`WASH_POSITIONS` 恰好是 CSS `background-position` 的九点网格，逐个都必须是合法声明（否则引擎会静默丢掉整条属性）：
+
+| | 左 | 中 | 右 |
+| --- | --- | --- | --- |
+| **上** | `top left` | `top` | `top right` |
+| **中** | `left` | `center` | `right` |
+| **下** | `bottom left` | `bottom` | `bottom right` |
+
+角落一律写作 `<垂直> <水平>`（`top left`），不写反序：`background-position` 对两个关键字是顺序无关的，但只有一种写法能被 `includes()` 精确匹配。
+
+`position` 无条件写入两个图片槽的 `background-position`，不按 `fit` 分叉：
+
+```
+slot.style.backgroundPosition = wash.position
+bleed.style.backgroundPosition = "center"   // 恒定
+```
+
+- `cover` / `blur` 下图片按视口比例铺满，位置**不产生视觉变化**。它照常写入，是为了让代码只有一条路径，而不是多一个只在 `contain` 下才出现的分支。
+- `bleed` 层恒定居中：它存在的目的是遮住上层 `contain` 的蒙版边，一旦偏心，恰好会露出它本来要盖住的那条边。
+- `position` **必须进渲染键**（`renderKey`）。它既不改变图片内容也不改变尺寸，`needsWork` 与 `needsCrossfade` 都不会因它变真；不进键的话这次改动会被短路判为"无事可做"，位置静默不生效，直到别的什么恰好动了。
+- 未知值在 `normalizeWash` 里被修回 `center`，不是被拒绝——洗色子记录永远是一个完整可用的形状。
+
+---
+
+## 七、轮播调度
+
+### 7.1 字段
+
+```ts
+interface Schedule {
+	mode: "interval" | "hourly" | "daily" | "session";
+	order: "sequential" | "shuffle" | "random";
+	intervalMin: number;   // interval 模式：5 … 43200
+	atMinutes: number[];   // hourly 模式：每小时的第 N 分钟，0 … 59，去重升序
+	atTime: string;        // daily 模式：本地墙钟 "HH:MM"
+	transitionMs: number;  // 交叉淡入，0 … 4000（0 = 瞬时）
+	anchorAt: number;      // interval 模式的网格锚点（unix ms）
+}
+```
+
+### 7.2 常量
+
+| 常量 | 值 |
+| --- | --- |
+| `SCHEDULE_MODES` | `interval` · `hourly` · `daily` · `session` |
+| `ORDER_MODES` | `sequential` · `shuffle` · `random` |
+| `INTERVAL_MIN` / `INTERVAL_MAX` | 5 / 43200 分钟（5 分钟 … 30 天） |
+| `TRANSITION_MIN` / `TRANSITION_MAX` | 0 / 4000 ms |
+| `atMinutes` | 0 … 59，归一化时去重并升序 |
+| `atTime` | `HH:MM`，经 `parseClock` / `formatClock` 往返 |
+
+### 7.3 四种模式的下一次触发
+
+| 模式 | `nextTriggerAt(schedule, now)` 的语义 |
+| --- | --- |
+| `interval` | `anchorAt + k × intervalMin`，取大于 `now` 的最小值。**网格锚定**，与刷新次数、上次触发时间无关 |
+| `hourly` | 今天/明天中第一个满足"分钟 ∈ `atMinutes`"的时刻 |
+| `daily` | 下一个 `atTime` 对应的本地墙钟时刻 |
+| `session` | 与钟表无关。不由 `nextTriggerAt` 驱动，而是由可见性事件驱动 |
+
+### 7.4 顺序策略
+
+| 策略 | 行为 | `remaining` 队列 |
+| --- | --- | --- |
+| `sequential` | 下标 +1 循环 | 不使用 |
+| `shuffle` | Fisher–Yates 洗出一轮，逐个出队，**走完一轮前不重复** | 使用 |
+| `random` | 每步独立随机，由 `orderStep` 派生随机流 | 不使用 |
+
+`orderRevision` 在顺序变化时自增，使旧洗牌队列作废——队列是用旧列表长度算的，列表增删后会指向不存在的下标。
+
+### 7.5 追赶语义
+
+`planResume(schedule, now, persistedNextAt)` 决定睡过一段之后怎么办，返回 `{ due, missed, nextAt }`：
+
+- `session` 模式直接返回 `{ due: false, missed: 0, nextAt: 0 }`——它不由钟表驱动。
+- 未武装（`persistedNextAt` 非有限值或 ≤ 0）时返回 `due: false`，只算出新的 `nextAt`。
+- **尚未到期时保留持久化的那个时刻**（`nextAt: persistedNextAt`）——这样一次重新加载就不能把触发时间往后推。
+- 已过期时 `missed` 按 `interval` 步长算出错过几轮，但采取的是**有损**策略：错过五个触发点只前进**一步**，不补播。补播会在用户眼前闪五张图、烧 CPU 去追一个只有最后一次才有意义的中间状态。
+
+这一条是可断言的规则，不是定时器回调里的偶然行为——7 天跳变后 `missed > 100` 而游标**恰好前进 1**，见 `tests/preview.test.cjs`。
+
+### 7.6 纯函数 API
+
+调度模块全部是纯函数，浏览器半边只持有**一个**定时器：
+
+| 函数 | 签名 |
+| --- | --- |
+| `normalizeSchedule` | `(unknown) → Schedule` |
+| `nextTriggerAt` | `(schedule, now) → number` |
+| `upcomingTriggers` | `(schedule, now, count) → number[]` |
+| `planResume` | `(schedule, now, persistedNextAt) → { due, missed, nextAt }` |
+| `stepCursor` | `(state) → state` |
+| `reconcileCursor` | `(state) → state` |
+| `orderRng` | `(state) → rng` |
+| `parseClock` / `formatClock` | `"HH:MM" ↔ { h, m }` |
+
+写成纯函数的理由很实际：调度器的难点全在边界情况（睡过触发点、时钟回拨、夏令时跳变、两张图的洗牌列表、播放列表清空），而**这些没有一个能通过 `setInterval` 诚实地测出来**。
+
+---
+
+## 八、状态
+
+### 8.1 字段总表
+
+持久化文档的字段列表是 `DOC_KEYS`，与 `State` 的字段列表**完全一致**（由 `tests/state.test.cjs` 断言，防止只在一侧加字段）。
+
+| 字段 | 类型 | 默认 | 含义 |
+| --- | --- | --- | --- |
+| `mode` | `single` \| `rotation` | `single` | 单张 / 轮播 |
+| `single` | `WallpaperItem` | `drift` | `single` 模式显示的那一张 |
+| `playlist` | `WallpaperItem[]` | `[]` | 轮播序列，≤ 24 |
+| `cursor` | number | `0` | 播放列表游标 |
+| `remaining` | number[] | `[]` | 洗牌模式下剩余的队列 |
+| `orderRevision` | number | `1` | 顺序变更计数，用于废弃旧队列 |
+| `orderStep` | number | `0` | 单调递增，为 `random` 派生随机流 |
+| `nextAt` | number | `0` | 下次触发的 unix ms；`0` 表示"未武装" |
+| `paused` | boolean | `false` | 轮播暂停 |
+| `wash` | `Wash` | 见第六节 | 洗色设置 |
+| `tuning` | `Tuning` | `NEUTRAL_TUNING` | 三轴微调 |
+| `schedule` | `Schedule` | 见下 | 调度配置 |
+| `washTouched` | boolean | `false` | 用户是否曾手动调过洗色 |
+
+调度默认值：
+
+```json
+{ "mode": "interval", "order": "sequential", "intervalMin": 30,
+  "atMinutes": [0], "atTime": "07:30", "transitionMs": 1200, "anchorAt": 0 }
+```
+
+洗色默认值：
+
+```json
+{ "opacity": 0.82, "blur": 0, "fit": "cover", "position": "center",
+  "autoDim": true, "readability": true }
+```
+
+### 8.2 归一化
+
+所有到达状态模型的值都经过文本通道（磁盘 JSON、`localStorage`、或手工编辑），任何一个都可能是**过期的**（未来版本写入）、**截断的**或**有敌意的**（同源页面脚本写进同一份存储）。
+
+所以归一化**只做一次**，在 `state.cjs` 里，而且每个字段是**钳进值域**而不是仅做类型检查：
+
+> 读到一个透明度 `3.4`，这不是一个需要上报的错误，它是一个应当渲染为 `1.0` 的值。
+
+`normalizeState` / `normalizeItem` / `normalizeWash` / `normalizeTuning` / `normalizeSchedule` / `normalizeHourlyMinutes` / `normalizeSeed` / `normalizeLuminance` 覆盖全部入口。**它们都不抛异常。**
+
+`normalizeLuminance` 是唯一一个**按非数字即拒绝**而非钳值的归一化器：
+
+| 输入 | 输出 | 理由 |
+| --- | --- | --- |
+| `0` … `1` 的有限数 | 保留，四舍五入到 3 位小数 | 真实测量 |
+| 任何非 `number` | `null` | `Number(null)` 是 `0`，钳值会把"未测量"变成"纯黑" |
+| `NaN` / `±Infinity` | `null` | 同样是"没有可用测量" |
+| `< 0` / `> 1` | `null` | 真实测量不可能越界，越界说明数据被改过 |
+
+这是"归一化一律钳值"这条规则的一个刻意例外，理由写在上面：对亮度来说，`0` 不是"很小"，而是"保护关闭"。把一个坏值钳到 `0` 会让可读性下限静默失效，而 `null` 会让它回退到中性常数——后者才是安全方向。
+
+---
+
+## 九、持久化格式
+
+### 9.1 扁平字符串 map
+
+`$DSH_HOME/lumen.json`（默认 `~/.dsh/lumen.json`）是一个**扁平 map，值一律是字符串**。
+
+这不是风格偏好，是**跨版本共存的要求**：文件被所有解析到同一 `DSH_HOME` 的进程共享——Web profile 与桌面外壳可能同时在跑，甚至跑着不同版本的插件。若它是嵌套结构，旧版构建会把新版的嵌套对象读成 `"[object Object]"`，然后**把它当成一个偏好写回去**。扁平字符串 map 则退化成"一个不认识的键，忽略掉"。
+
+### 9.2 键
+
+| 键 | 值 |
+| --- | --- |
+| `schema` | 保留键，当前 `"1"`（`SCHEMA_KEY = "schema"`），客户端不允许写 |
+| `mode` | `"single"` / `"rotation"` |
+| `single` | 条目的 JSON |
+| `playlist` | 条目数组的 JSON |
+| `cursor` / `remaining` / `orderRevision` / `orderStep` / `nextAt` | 数字的字面量 |
+| `paused` | `"true"` / `"false"` |
+| `wash` / `tuning` / `schedule` | 对象的 JSON |
+| `washTouched` | `"true"` / `"false"` |
+| `blob:<id>` | 图片负载（data URL），每个条目一个键 |
+| `splash.media` | 开屏媒体在 `$DSH_HOME/lumen-media/` 下的**文件名**。宿主生成、形状白名单校验，既不是路径也不是字节 |
+| `dsh-lumen:schema-version` | **宿主保留键**，状态文件的 schema 版本（十进制整数字符串）。宿主在每次 `get` 之前剥掉它，浏览器既看不到也写不进去 |
+
+浏览器种子里同一份 map 加前缀 `dsh-lumen:`（`SEED_PREFIX`，`SEED_VERSION = 1`）。
+
+### 9.3 合并语义
+
+`POST /lumen/api` 的 `set` 是**合并**而非替换：
+
+| 补丁里的值 | 效果 |
+| --- | --- |
+| 字符串 | 设置该键 |
+| `null` | 删除该键 |
+| 键缺席 | 保持原值 |
+
+插件因此只推送用户（或轮播引擎）**真正改动**的字段，并为消失的负载键推 `null`。这条很重要：一个曾被写入、现在已不存在的键**必须**删除，否则移除一条播放列表项会把它的图片字节永远留在磁盘上。
+
+为什么不是整份文档替换：两个 DSH 窗口共享同一个 `$DSH_HOME/lumen.json`，只改了壁纸的那个窗口会把另一个窗口的洗色、微调和调度一起回滚掉。
+
+### 9.4 接口
+
+`/lumen/api`：
+
+| 方法 | 语义 |
+| --- | --- |
+| `get` | 返回状态，**不含**保留键 |
+| `ping` | 探活 |
+| `set` | 合并一份补丁 |
+
+`/lumen/splash`（同一套围栏，见 9.6）：
+
+| 方法 | 路径 | 语义 |
+| --- | --- | --- |
+| `POST` | `/lumen/splash/upload` | 把请求体当作媒体流写入 `lumen-media/`，并把 `splash.media` 指向它。`content-type` 必须在允许表内，否则 415 |
+| `GET` / `HEAD` | `/lumen/splash/media` | 按 `Range` 流式送出当前媒体（200 / 206 / 304 / 416） |
+| `POST` | `/lumen/splash/clear` | 忘记开屏并删除它的字节；重复调用返回 `cleared: false`，不是错误 |
+
+### 9.5 上限
+
+| 常量 | 值 | 作用 |
+| --- | --- | --- |
+| `MAX_BODY_BYTES` | 24 MiB | 单次 JSON 请求体上限 |
+| `MAX_STATE_BYTES` | 24 MiB | 整个状态文件上限，每次写入前校验 |
+| `MAX_STATE_KEYS` | 64 | 键数量上限 |
+| `MAX_IMAGE_CHARS` | 8388608 | 单个图片负载字符数 |
+| `MAX_GRADIENT_CHARS` | 600 | 单条渐变字符串字符数 |
+| `MAX_MEDIA_BYTES` | 512 MiB | 单次开屏媒体上传上限（媒体不进状态文件，所以与上面两个 24 MiB 无关） |
+
+文件上限的意义是：客户端的一个 bug 若持续追加 blob 键，它会**在那一次写入上响亮地失败**，而不是把用户的家目录填满。
+
+条目上的 `luminance` **不占新键**——它嵌在条目所在的 JSON 字段里（`single` / `playlist`），只有图片字节本身才各自占一个 blob 键。因此键数量与加入实测亮度之前完全一致：最坏情况 24 条播放列表 + 1 条 `single` = 25 个 blob 键，加 13 个 `DOC_KEYS` 与 schema 戳，仍在 `MAX_STATE_KEYS`（64）之内。`splash.media` 是第 14 个偏好键，仍在同一个上限内，因此**不抬 schema 版本**：新版写下的键，旧版读成"一个不认识的键，忽略掉"，这正是扁平字符串 map 要换来的性质。
+
+### 9.6 路由围栏
+
+两条路由前缀（`/lumen/api`、`/lumen/splash`）过**同一道围栏，顺序固定三层**：
+
+| 层 | 内容 | 缺失时 |
+| --- | --- | --- |
+| ① | 插件自己的校验器：`Host` 是回环地址（或 profile 里显式配置的可信 authority）**且**请求带同源浏览器标记 | 不可能缺失，恒定生效 |
+| ② | 宿主提供的 `connection.requestRejection`：返回 `403`（宿主自己的 Host/Origin 围栏）、`401`（浏览器会话未通过）或 `undefined` | 退回①，并在**加载期**打一条告警 |
+| ③ | 兜底语义 | —— |
+
+两层语义上的刻意不对称：
+
+- **②抛异常 = 拒绝，不是放行。** 检查者自己坏了就把门打开的围栏，不是围栏。
+- **只有 `undefined` 放行。** 宿主自己的 `admit()` 也是拿 `void 0` 比较而非判 falsy，照抄这一点，可以让将来某个返回 `null` 的构建不至于在我们这边开门、在它那边关门。看不懂的返回值一律按拒绝处理。
+
+②是**插件路由通往宿主浏览器鉴权的唯一桥梁**，所以只做①的围栏，即使和宿主在双方都看得见的每一处都一致，也严格弱于宿主的自有路由。
+
+这是 **DNS rebinding / 跨站防御，不是鉴权**。写在这里是为了避免被误当成访问控制。
+
+---
+
+## 十、随机数
+
+| 组件 | 实现 |
+| --- | --- |
+| 哈希 | **FNV-1a**（32 位），把 `seed` 字符串映成种子 |
+| PRNG | **mulberry32**，返回 `[0,1)` |
+| 洗牌 | **Fisher–Yates**，在 `rng.cjs` 的 `shuffled` 里 |
+
+选 mulberry32 的理由是它小、快、无依赖，且**周期与分布对"挑一张壁纸"这个用途绰绰有余**——这里不需要密码学强度。它的确定性是功能的一部分：同一个种子必须永远给出同一张图。
+
+---
+
+## 十一、诊断快照
+
+`window.__DSH_LUMEN__` 发布只读快照，供脚本与桌面工具读取：
+
+| 字段 | 含义 |
+| --- | --- |
+| `plugin` / `build` / `schema` | `"dsh-lumen"` / `"1.0.0"` / `1` |
+| `status` | `booting` · `ready` · `degraded` · `disposed` |
+| `warnings` | `[dsh-lumen]` 前缀的告警行数组 |
+| `health` | `{ hostAvailable, hostReason, lastError, hasStorage }` |
+| `engine` | 引擎自省结果 |
+| `mode` / `current` / `playlistLength` / `nextAt` | 当前状态摘要 |
+| `publishedAt` | 快照时间 |
+
+快照**只读**：改它不会影响插件状态。
+
+---
+
+## 十二、DOM 契约
+
+引擎在页面上创建的节点，全部带 `data-dsh-lumen` 标记（`ACTIVE_ATTR`）：
+
+| 标记 | 说明 |
+| --- | --- |
+| `root` | 根容器，`position: fixed; inset: 0; z-index: -1`，不接收指针事件 |
+| `bleed` | 仅 `blur` 填充模式存在：放大且模糊的底图 |
+| `slot-0` / `slot-1` | 交叉淡入的两个图层，任一时刻只有一个不透明 |
+| `grain` | 颗粒层，`mix-blend-mode: overlay` |
+
+样式表挂在 `dsh-lumen-style`（`STYLE_ID`）。
+
+根节点的 `z-index: -1` 意味着它在应用**之前**绘制——所以它盖不住任何界面元素，也解释了为什么"画布必须半透明"是壁纸可见的前提（`--pg-bg` 那种预览工具条自己的底色只有在壁纸渲染失败时才会露出来）。
+
+把它和开屏层放在一起看，这里有一处**刻意的两极**：壁纸取 `-1`（在文档之下），开屏取 `2147483647`（CSS 允许的最大值，在一切之上）。两者都不是随手填的数——壁纸要待在内容背后才叫壁纸，而开屏要盖住整个窗口、包括其它插件画在最上层的浮层（那个预算是公开的，见 [`SPLASH-SPEC.md`](SPLASH-SPEC.md) §6.5 与 §八）。而且这两个极端不会同时存在：开屏层在界面可用的那一刻就已经被移除了。
+
+### 12.1 设置面板用到的类名
+
+面板注入宿主自己的设置区，所以每个类都带 `lumen-` 前缀（`is-*` 状态修饰符只在复合选择器里出现）。导入与位置控制相关的部分：
+
+| 类名 | 节点 | 说明 |
+| --- | --- | --- |
+| `lumen-file-input` | `<input type=file>` | `display:none`，由「选择文件」按钮间接触发；带 `multiple` |
+| `lumen-row.is-drop` | 本地图片那一行 | 拖拽悬停高亮。用 `inset box-shadow` + 负外边距绘制，**不用真边框**——高亮时行会多出 2px 并回流，看起来像故障 |
+| `lumen-grid9` | 位置控件的容器 | `role="group"`，`aria-label` 取自 `appearance.position` |
+| `lumen-grid9-cell` | 9 个 `<button>` | 每格带 `data-value`（即 `WASH_POSITIONS` 之一）与 `aria-pressed`；选中格用 `::after` 画一个点，读作"主体锚在这里"而不是"按钮被按下" |
+
+三处可访问性细节：九宫格没有可见文字（网格本身就是标签），所以九个位置各有一条**无障碍名称**词条（`position.*`，共 9 条）；按下状态同时写在 `aria-pressed` 上，只有 `is-on` 类对读屏软件不可见；拖拽高亮是纯装饰，不影响功能。
+
+拖拽处理的 enter/leave 是**计数**而非开关切换：`dragleave` 在指针跨入子元素时也会触发，朴素的 enter-add / leave-remove 会让高亮在指针仍在目标内时闪烁。计数让它表达"指针还在这一片里"，也就是它看起来的意思。`dragover` 必须显式设 `dropEffect = "copy"`，否则浏览器报"不允许放置"，`drop` 根本不会触发。
+
+---
+
+## 十三、版本与兼容
+
+- `schema` 当前为 `1`。归一化器接受未来版本的字段：不认识的键被忽略而不是报错，认识的键被钳进值域。
+- 保留键 `schema` 由宿主维护，客户端 `set` 请求里携带它会被拒绝。
+- 状态文件的扁平字符串结构是刻意的降级设计（见 9.1），跨插件版本读写安全。
+
+**为什么加入 `wash.position` 与条目 `luminance` 没有抬 `schema` 版本。** 两者都是**纯增量**字段，且两侧都有定义良好的缺省：
+
+| 缺省 | 结果 |
+| --- | --- |
+| 旧文档没有 `wash.position` | `normalizeWash` 补 `"center"`，与加这个字段之前的行为完全一致 |
+| 旧文档的条目没有 `luminance` | `normalizeLuminance(undefined)` 是 `null`，引擎回退到中性常数——同样与之前一致 |
+
+也就是说，一个由旧版本写下的文档被新版本读到，渲染结果与旧版本**逐像素相同**；反向（新文档被旧版本读）也只是丢掉这两个增量字段，`position` 退回居中、`luminance` 退回常数。同一条性质还让降级变得安全：卸载到旧版本不会让洗色或调度出问题。
+
+---
+
+相关文档：[README](../README.md) · [安装指引](INSTALL.md) · [创新点](INNOVATION.md)

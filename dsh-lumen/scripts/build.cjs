@@ -1,0 +1,236 @@
+"use strict";
+/**
+ * Bundle `src/**` into `lib/client.js`.
+ *
+ * WHY A HAND-WRITTEN BUNDLER INSTEAD OF esbuild/rolldown
+ *
+ * The plugin's browser half has to be one file in a very specific shape: a
+ * `window.__ModuleLoader__.load({ id, factory })` call whose factory body is
+ * plain CJS with `require` resolved against the shell's module table. Every
+ * real bundler can produce the *code*; none can produce the *contract*, and
+ * getting it wrong fails in a way that takes the host shell down.
+ *
+ * Since the source is already CommonJS, the whole job is: wrap each file in a
+ * function, keep a table, and write a ten-line resolver. That is 100 lines of
+ * obvious code with no dependency to audit, no version to track, and no
+ * output that changes shape when the tool chain updates. Notably it also means
+ * `npm test` needs no build step: the very same `.cjs` files run under Node's
+ * test runner unmodified.
+ *
+ * `--check` regenerates in memory and compares against what is committed, so CI
+ * can prove the shipped bundle matches its source.
+ */
+
+const fs = require("node:fs");
+const path = require("node:path");
+
+const ROOT = path.resolve(__dirname, "..");
+const SRC_DIR = path.join(ROOT, "src");
+const OUT_FILE = path.join(ROOT, "lib", "client.js");
+const LOCALE_DIR = path.join(ROOT, "locale");
+const ENTRY = "src/index.cjs";
+
+/** Plugin id used by the module loader; must match the cordis.patch.yml entry. */
+const PLUGIN_ID = "dsh-lumen";
+/** Build size budget, bytes. A bundle this small should never approach it. */
+const SIZE_BUDGET = 512 * 1024;
+
+/** Every `.cjs` file under `src/`, as POSIX-style paths relative to the repo root. */
+function collectModules() {
+	const out = [];
+	const walk = (dir) => {
+		for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+			const full = path.join(dir, entry.name);
+			if (entry.isDirectory()) {
+				walk(full);
+				continue;
+			}
+			if (!entry.name.endsWith(".cjs")) continue;
+			out.push(path.relative(ROOT, full).split(path.sep).join("/"));
+		}
+	};
+	walk(SRC_DIR);
+	out.sort();
+	return out;
+}
+
+/** Source text with the trailing newline normalised, so `--check` is stable. */
+function readSource(relPath) {
+	return fs.readFileSync(path.join(ROOT, relPath), "utf8").replace(/\r\n/g, "\n").trimEnd();
+}
+
+/**
+ * The module table and resolver.
+ *
+ * Relative ids are resolved against the *requiring* module's own path, which is
+ * the one behaviour a bundler must get right: `require("../color.cjs")` from
+ * `src/ui/panel.cjs` and from `src/engine.cjs` mean different files. Anything
+ * non-relative (`"react"`) is handed to the host's `require`, which is how the
+ * plugin reaches platform seeds without bundling them.
+ */
+const RUNTIME = `	var __defs = Object.create(null);
+	var __cache = Object.create(null);
+	function __resolve(from, id) {
+		if (id.charAt(0) !== ".") return null;
+		var parts = from.split("/");
+		parts.pop();
+		var bits = id.split("/");
+		for (var i = 0; i < bits.length; i += 1) {
+			var bit = bits[i];
+			if (bit === "" || bit === ".") continue;
+			if (bit === "..") parts.pop();
+			else parts.push(bit);
+		}
+		return parts.join("/");
+	}
+	function __require(from, id) {
+		var target = __resolve(from, id);
+		if (target === null || __defs[target] === undefined) {
+			// Not ours: a platform seed. Delegated to the loader's own table.
+			return hostRequire(id);
+		}
+		if (__cache[target] !== undefined) return __cache[target].exports;
+		var mod = { exports: {} };
+		__cache[target] = mod;
+		__defs[target](mod, mod.exports, function (dep) {
+			return __require(target, dep);
+		});
+		return mod.exports;
+	}
+	function __load(id) {
+		if (__cache[id] !== undefined) return __cache[id].exports;
+		var mod = { exports: {} };
+		__cache[id] = mod;
+		__defs[id](mod, mod.exports, function (dep) {
+			return __require(id, dep);
+		});
+		return mod.exports;
+	}`;
+
+/**
+ * The locale files, generated from the one translation table.
+ *
+ * `package.json` advertises `locale/zh.json` and `locale/en.json`, and the
+ * plugin registers its dictionary through `ctx.locale.register` at runtime — so
+ * the JSON files are redundant *today* but load-bearing the moment anything
+ * reads the package statically (a marketplace listing, a doc generator, a
+ * translation tool). Generating them from the same table is what keeps them
+ * from becoming a second, stale copy.
+ */
+function buildLocales() {
+	// Required rather than parsed: the table is executable JS, and a regex over
+	// it would silently miss a key whose value contains an escaped quote.
+	const i18n = require(path.join(SRC_DIR, "i18n.cjs"));
+	const dictionaries = i18n.dictionaries();
+	return Object.entries(dictionaries).map(([lang, dict]) => ({
+		file: path.join(LOCALE_DIR, `${lang}.json`),
+		text: `${JSON.stringify(dict, null, "\t")}\n`
+	}));
+}
+
+/** Render the whole bundle. */
+function build() {
+	const modules = collectModules();
+	const chunks = [];
+	chunks.push("// dsh-lumen — browser half (generated by scripts/build.cjs; do not edit).");
+	chunks.push("//");
+	chunks.push("// Loaded by dsh-client-modules at /plugins/dsh-lumen/client.js and executed through the");
+	chunks.push("// vendored cordis Loader's lazy-CJS module table (window.__ModuleLoader__.load). The factory");
+	chunks.push("// body is plain CJS with require() resolved against a private table, falling through to the");
+	chunks.push("// shell's module table for platform seeds only.");
+	chunks.push("//");
+	chunks.push("// Source of truth: src/**. Run `npm run build` after editing; `npm run build:check` verifies.");
+	chunks.push(`// Modules: ${modules.length}`);
+	chunks.push("");
+	chunks.push("window.__ModuleLoader__.load({");
+	chunks.push(`\tid: ${JSON.stringify(PLUGIN_ID)},`);
+	chunks.push("\tfactory: function (hostRequire) {");
+	chunks.push("\t\tvar module = { exports: {} };");
+	chunks.push("\t\tvar exports = module.exports;");
+	chunks.push("\t\tObject.defineProperty(exports, Symbol.toStringTag, { value: \"Module\" });");
+	chunks.push(RUNTIME);
+	chunks.push("");
+	for (const rel of modules) {
+		chunks.push(`\t\t//#region ${rel}`);
+		chunks.push(`\t\t__defs[${JSON.stringify(rel)}] = function (module, exports, require) {`);
+		const body = readSource(rel)
+			.split("\n")
+			.map((line) => (line.length === 0 ? "" : `\t\t\t${line}`))
+			.join("\n");
+		chunks.push(body);
+		chunks.push("\t\t};");
+		chunks.push("\t\t//#endregion");
+		chunks.push("");
+	}
+	chunks.push(`\t\tvar __entry = __load(${JSON.stringify(ENTRY)});`);
+	// Re-exported one by one rather than spread: the factory's return value is
+	// what the plugin runtime sees, and an explicit list is what makes the
+	// declaration file checkable against reality.
+	chunks.push("\t\tvar __exported = [\"apply\", \"inject\", \"API_PATH\", \"STATUS_GLOBAL\", \"ITEM_SLOT\", \"SECTION_ID\", \"NS\", \"PLUGIN_BUILD\"];");
+	chunks.push("\t\tfor (var __i = 0; __i < __exported.length; __i += 1) exports[__exported[__i]] = __entry[__exported[__i]];");
+	chunks.push("\t\t// Exposed for the standalone preview and for tests that want a module");
+	chunks.push("\t\t// without booting the whole plugin. Not used by the host.");
+	chunks.push("\t\texports.__modules = {");
+	chunks.push(`\t\t\twallpapers: __load(${JSON.stringify("src/wallpapers.cjs")}),`);
+	chunks.push(`\t\t\tscheduler: __load(${JSON.stringify("src/scheduler.cjs")}),`);
+	chunks.push(`\t\t\tstate: __load(${JSON.stringify("src/state.cjs")}),`);
+	chunks.push(`\t\t\tengine: __load(${JSON.stringify("src/engine.cjs")}),`);
+	chunks.push(`\t\t\tstore: __load(${JSON.stringify("src/store.cjs")}),`);
+	chunks.push(`\t\t\tpanel: __load(${JSON.stringify("src/ui/panel.cjs")})`);
+	chunks.push("\t\t};");
+	chunks.push("");
+	chunks.push("\t\treturn module.exports;");
+	chunks.push("\t}");
+	chunks.push("});");
+	chunks.push("");
+	return chunks.join("\n");
+}
+
+const generated = build();
+const locales = buildLocales();
+
+if (process.argv.includes("--check")) {
+	const drift = [];
+	const current = fs.existsSync(OUT_FILE) ? fs.readFileSync(OUT_FILE, "utf8").replace(/\r\n/g, "\n") : null;
+	if (current !== generated) drift.push({ label: "lib/client.js", current, generated });
+	for (const locale of locales) {
+		const existing = fs.existsSync(locale.file) ? fs.readFileSync(locale.file, "utf8").replace(/\r\n/g, "\n") : null;
+		if (existing !== locale.text) {
+			drift.push({ label: path.relative(ROOT, locale.file).split(path.sep).join("/"), current: existing, generated: locale.text });
+		}
+	}
+	if (drift.length === 0) {
+		process.stdout.write(`build:check ok (${generated.length} bytes, ${locales.length} locale files)\n`);
+		process.exit(0);
+	}
+	process.stderr.write(`build:check FAILED — ${drift.map((d) => d.label).join(", ")} do not match src/**.\n`);
+	process.stderr.write("Run `npm run build` and commit the result.\n");
+	const first = drift[0];
+	if (first.current !== null) {
+		const a = first.current.split("\n");
+		const b = first.generated.split("\n");
+		for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+			if (a[i] === b[i]) continue;
+			process.stderr.write(`  ${first.label}: first difference at line ${i + 1}\n`);
+			process.stderr.write(`    committed: ${JSON.stringify(a[i] === undefined ? null : a[i]).slice(0, 160)}\n`);
+			process.stderr.write(`    generated: ${JSON.stringify(b[i] === undefined ? null : b[i]).slice(0, 160)}\n`);
+			break;
+		}
+	} else {
+		process.stderr.write(`  ${first.label}: missing\n`);
+	}
+	process.exit(1);
+}
+
+if (Buffer.byteLength(generated, "utf8") > SIZE_BUDGET) {
+	process.stderr.write(`build FAILED — bundle is ${generated.length} bytes, budget is ${SIZE_BUDGET}.\n`);
+	process.exit(1);
+}
+
+fs.mkdirSync(path.dirname(OUT_FILE), { recursive: true });
+fs.writeFileSync(OUT_FILE, generated, "utf8");
+fs.mkdirSync(LOCALE_DIR, { recursive: true });
+for (const locale of locales) fs.writeFileSync(locale.file, locale.text, "utf8");
+process.stdout.write(
+	`built lib/client.js — ${collectModules().length} modules, ${generated.length} bytes; ${locales.length} locale files\n`
+);
