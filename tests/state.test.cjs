@@ -87,12 +87,12 @@ test("currentItem follows the mode", () => {
 	const rotating = state.normalizeState({
 		mode: "rotation",
 		cursor: 1,
-		playlist: [{ kind: "recipe", ref: "drift" }, { kind: "recipe", ref: "ember" }]
+		playlist: [{ kind: "recipe", ref: "drift" }, { kind: "recipe", ref: "dune" }]
 	});
-	assert.equal(state.currentItem(rotating).ref, "ember");
+	assert.equal(state.currentItem(rotating).ref, "dune");
 	// A rotation that lost its playlist mid-flight still shows something.
-	const orphaned = state.normalizeState({ mode: "rotation", playlist: [], single: { kind: "recipe", ref: "ivory" } });
-	assert.equal(state.currentItem(orphaned).ref, "ivory");
+	const orphaned = state.normalizeState({ mode: "rotation", playlist: [], single: { kind: "recipe", ref: "paper" } });
+	assert.equal(state.currentItem(orphaned).ref, "paper");
 });
 
 test("gradient validation is an allow-list, not a deny-list", () => {
@@ -142,6 +142,16 @@ test("composed background values are validated by shape", () => {
 	assert.equal(state.isSafeBackgroundImage("linear-gradient(#fff 0%, #000 100%); background: red"), false);
 	assert.equal(state.isSafeBackgroundImage(""), false);
 	assert.equal(state.isSafeBackgroundImage(null), false);
+
+	// A photograph is not a gradient stack. The 64KB ceiling applies to what
+	// this plugin *generates*; a picture's own limit is MAX_IMAGE_CHARS, or a
+	// real wallpaper gets refused and the page shows nothing at all.
+	const photo = `data:image/jpeg;base64,${"A".repeat(124519)}`;
+	assert.equal(state.isSafeBackgroundImage(`url("${photo}")`), true, "a normal-sized photo was refused");
+	assert.equal(state.isSafeBackgroundImage(`url("data:image/jpeg;base64,${"A".repeat(state.MAX_IMAGE_CHARS)}")`), false, "over the payload cap");
+	const longStack = `linear-gradient(90deg, ${"#000 0%, ".repeat(8000)}#fff 100%)`;
+	assert.ok(longStack.length > state.MAX_BACKGROUND_CSS_CHARS);
+	assert.equal(state.isSafeBackgroundImage(longStack), false, "an oversized gradient is still refused");
 });
 
 test("describeItem produces a short readable label", () => {
@@ -185,21 +195,21 @@ test("a store round-trip preserves the playlist and rehydrates payloads", () => 
 		mode: "rotation",
 		cursor: 1,
 		playlist: [
-			{ id: "a1", kind: "recipe", ref: "ember", seed: "s1" },
+			{ id: "a1", kind: "recipe", ref: "dune", seed: "s1" },
 			{ id: "b2", kind: "image", ref: TINY_PNG, seed: "default" },
 			{ id: "c3", kind: "gradient", ref: "linear-gradient(90deg, #000 0%, #fff 100%)", seed: "default" }
 		],
-		wash: { opacity: 0.5, blur: 12 }
+		wash: { opacity: 0.44, blur: 12 }
 	});
 	const restored = state.fromStore(state.toStore(original));
 	assert.equal(restored.mode, "rotation");
 	assert.equal(restored.cursor, 1);
 	assert.equal(restored.playlist.length, 3);
-	assert.equal(restored.playlist[0].ref, "ember");
+	assert.equal(restored.playlist[0].ref, "dune");
 	assert.equal(restored.playlist[0].seed, "s1");
 	assert.equal(restored.playlist[1].ref, TINY_PNG, "the payload did not come back");
 	assert.equal(restored.playlist[2].ref, "linear-gradient(90deg, #000 0%, #fff 100%)");
-	assert.equal(restored.wash.opacity, 0.5);
+	assert.equal(restored.wash.opacity, 0.44);
 	assert.equal(restored.wash.blur, 12);
 });
 
@@ -224,12 +234,26 @@ test("fromStore degrades to defaults on a corrupt or absent document", () => {
 	}
 });
 
+test("the 1.0.x veil opacity is migrated, but only when nobody chose it", () => {
+	// The default moved 0.5 → 0.3 because half a white veil read as "the page
+	// has a tint", not "there is a wallpaper". A saved document carries the old
+	// number, so normalizing alone would keep painting exactly the veil the
+	// upgrade was meant to remove.
+	const untouched = state.normalizeState({ wash: { opacity: 0.5 } });
+	assert.equal(untouched.wash.opacity, state.DEFAULT_STATE.wash.opacity, "the washed-out default survived the upgrade");
+	const chosen = state.normalizeState({ wash: { opacity: 0.5 }, washTouched: true });
+	assert.equal(chosen.wash.opacity, 0.5, "a value the user picked was overwritten");
+	// Only that exact number is history. Anything else is somebody's choice.
+	const nearby = state.normalizeState({ wash: { opacity: 0.62 } });
+	assert.equal(nearby.wash.opacity, 0.62, "an unrelated value was treated as the legacy default");
+});
+
 test("a partial map falls back to defaults per field", () => {
 	// The host merges patches, so a field the user never touched is genuinely
 	// absent. Falling back per field is what lets an improved default reach
 	// users who never overrode it.
-	const out = state.fromStore({ mode: '"rotation"', wash: JSON.stringify({ opacity: 0.5 }) });
-	assert.equal(out.wash.opacity, 0.5, "the stored field was lost");
+	const out = state.fromStore({ mode: '"rotation"', wash: JSON.stringify({ opacity: 0.44 }) });
+	assert.equal(out.wash.opacity, 0.44, "the stored field was lost");
 	assert.equal(out.wash.blur, state.DEFAULT_STATE.wash.blur, "an absent field did not default");
 	assert.equal(out.playlist.length, 0);
 	assert.equal(out.single.kind, state.DEFAULT_STATE.single.kind);
@@ -254,7 +278,7 @@ test("the single-document layout written by an earlier build is still readable",
 			schema: 1,
 			mode: "rotation",
 			cursor: 1,
-			playlist: [{ id: "a1", kind: "recipe", ref: "ember", seed: "s1" }],
+			playlist: [{ id: "a1", kind: "recipe", ref: "dune", seed: "s1" }],
 			wash: { opacity: 0.6, blur: 3 },
 			tuning: { hue: 20 }
 		})
@@ -264,7 +288,7 @@ test("the single-document layout written by an earlier build is still readable",
 	// A one-entry playlist clamps the stored cursor back to 0.
 	assert.equal(out.cursor, 0);
 	assert.equal(out.playlist.length, 1);
-	assert.equal(out.playlist[0].ref, "ember");
+	assert.equal(out.playlist[0].ref, "dune");
 	assert.equal(out.wash.opacity, 0.6);
 	assert.equal(out.tuning.hue, 20);
 });

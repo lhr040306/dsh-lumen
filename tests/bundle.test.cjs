@@ -218,7 +218,7 @@ test("apply mounts a wallpaper into the document", async () => {
 	const layers = document.documentElement.queryAll((el) => el.getAttribute("data-dsh-lumen") === "root");
 	assert.equal(layers.length, 1, "no wallpaper layer was created");
 	assert.equal(document.body.firstChild, layers[0], "the layer was not prepended behind the app");
-	assert.equal(layers[0].childNodes.length, 4, "the layer stack is incomplete");
+	assert.equal(layers[0].childNodes.length, 5, "the layer stack is incomplete");
 	assert.ok(ctx.registered.overrides.length > 0, "the wash was never published to the theme");
 	assert.equal(ctx.registered.locale.length, 1, "the locale dictionary was not registered");
 	assert.equal(ctx.registered.locale[0].ns, "settings.lumen");

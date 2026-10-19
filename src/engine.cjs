@@ -1,13 +1,12 @@
 "use strict";
 /**
- * The render engine — everything that touches the page.
- *
- * THE LAYER STACK
+ * The layer stack
  *
  *   <div data-dsh-lumen="root">      position:fixed; inset:0; z-index:-1
  *     <div data-dsh-lumen="bleed">   only in `blur` fit: the same picture, oversized + blurred
  *     <div data-dsh-lumen="slot-0">  picture A   ─┐ exactly one of these is opaque
  *     <div data-dsh-lumen="slot-1">  picture B   ─┘ they cross-fade
+ *     <div data-dsh-lumen="veil">    the one translucent layer between picture and UI
  *     <div data-dsh-lumen="grain">   film grain, mix-blend-mode: overlay
  *   </div>
  *
@@ -17,28 +16,31 @@
  * which is what the wash below does, and is why a wallpaper plugin is
  * necessarily also a wash plugin.
  *
- * THE WASH, AND WHAT IT IS ALLOWED TO TOUCH
+ * THE WASH: TRANSPARENT SURFACES PLUS ONE VEIL
  *
- * The wash replaces the theme's own canvas colour with a translucent version
- * of *the same colour*. It touches exactly two tokens:
+ * The wash used to write `rgba(base, alpha)` into `--dsw-alias-bg-base` and
+ * `--dsw-specific-sidebar-fill`. That is wrong for this shell, and it is why
+ * the wallpaper stayed invisible even once the colour was read correctly:
+ * the same token paints *several nested surfaces* (`body`, the frame's
+ * `--dsw-specific-sidebar-fill`, the centre column's `--dsw-alias-bg-base`),
+ * and translucency compounds. Three layers at 0.68 leave 0.97 — a solid wall
+ * with a wallpaper behind it.
  *
- *   --dsw-alias-bg-base            the canvas
- *   --dsw-specific-sidebar-fill    the sidebar pane
- *
- * and deliberately nothing else. A full skin system would also claim the
- * composer and dialog fill tokens, because it wants to control the material of
- * every surface. A wallpaper plugin has no business rewriting the input box.
- * The smaller the token surface, the smaller the blast radius when a future
- * host generation renames something.
+ * So the surfaces are made fully transparent and the tint is painted ONCE, in
+ * this plugin's own layer, directly over the picture. The user's opacity slider
+ * then means what it says (0.3 = the picture is 70% visible before the automatic
+ * lift), the readability floor is solved against the one layer that actually
+ * exists, and adding another surface to the shell can no longer silently swallow
+ * the wallpaper.
  *
  * THE READABILITY FLOOR IS THE ONE THING THE USER CANNOT TURN OFF BY ACCIDENT
  *
- * A wallpaper can destroy text contrast in a way no theme token can prevent:
- * the canvas is washed translucent over an arbitrary picture. So the wash alpha
- * is solved against WCAG AA (`color.alphaForContrast`), and the *effective*
- * alpha is the larger of the user's choice and the solved minimum. The panel
- * shows the difference rather than hiding it — a slider that silently reads
- * 30% while rendering 62% is exactly the kind of lie this project avoids.
+ * A wallpaper can destroy text contrast in a way no theme token can prevent.
+ * So the veil's alpha is solved against WCAG AA (`color.alphaForContrast`), and
+ * the *effective* alpha is the larger of the user's choice and the solved
+ * minimum. The panel shows the difference rather than hiding it — a slider that
+ * silently reads 30% while rendering 62% is exactly the kind of lie this
+ * project avoids.
  */
 
 const { renderRecipe } = require("./wallpapers.cjs");
@@ -82,6 +84,7 @@ const ENGINE_CSS = `
 [${ACTIVE_ATTR}="root"]{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;contain:strict;}
 [${ACTIVE_ATTR}="bleed"],[${ACTIVE_ATTR}="slot-0"],[${ACTIVE_ATTR}="slot-1"]{position:absolute;inset:0;background-repeat:no-repeat;background-position:center;background-size:cover;transition-property:opacity;transition-timing-function:cubic-bezier(0.4,0,0.2,1);}
 [${ACTIVE_ATTR}="slot-0"],[${ACTIVE_ATTR}="slot-1"]{will-change:opacity;}
+[${ACTIVE_ATTR}="veil"]{position:absolute;inset:0;background:transparent;transition:background-color 220ms ease;}
 [${ACTIVE_ATTR}="grain"]{position:absolute;inset:0;background-image:${NOISE_URI};background-repeat:repeat;mix-blend-mode:overlay;opacity:0;transition:opacity 240ms ease;}
 @media (prefers-reduced-motion: reduce){[${ACTIVE_ATTR}="slot-0"],[${ACTIVE_ATTR}="slot-1"]{transition-duration:0ms !important;}}
 `;
@@ -151,8 +154,7 @@ function measuredLuminance(item) {
  * is the un-composed one, so it is preferred; `active.id` is the fallback for
  * `preference === "system"`, where it resolves to the concrete light/dark entry.
  */
-function readRawTheme(ctx) {
-	let snapshot = null;
+function readRawTheme(ctx) {	let snapshot = null;
 	try {
 		snapshot = ctx.theme && typeof ctx.theme.getTheme === "function" ? ctx.theme.getTheme() : null;
 	} catch {
@@ -174,6 +176,64 @@ function readRawTheme(ctx) {
 	};
 }
 
+/** The two theme tokens the wash is allowed to touch. */
+const WASH_TOKENS = ["--dsw-alias-bg-base", "--dsw-specific-sidebar-fill"];
+/** Token carrying the body text colour. */
+const LABEL_TOKEN = "--dsw-alias-label-primary";
+
+/**
+ * Read the palette the *document* is actually painted with.
+ *
+ * WHY THIS EXISTS, AND WHY `readRawTheme` IS NOT ENOUGH
+ *
+ * DSH's built-in light/dark themes register with `tokens: {}` — deliberately
+ * empty. Their palette is not in the theme table at all; it is in the
+ * stylesheet (`body{--dsw-alias-bg-base:var(--dsw-static-neutral-bluish-00);
+ * background-color:var(--dsw-alias-bg-base)}`). A plugin that asks the theme
+ * service for `--dsw-alias-bg-base` therefore gets `undefined`, and a wash
+ * solved from `undefined` is no wash at all: the app keeps its opaque canvas
+ * and the wallpaper behind it is never visible. That is exactly what shipped in
+ * 1.0.0/1.0.1 — everything in the panel worked, and the picture never appeared.
+ *
+ * The resolved values are read from `getComputedStyle` instead: `background-
+ * color` of `body` *is* `--dsw-alias-bg-base` after substitution, and the two
+ * tokens are read by name. This works for the built-in pair and for any
+ * third-party theme, and it needs no knowledge of the token table.
+ *
+ * The caller must clear any wash of its own first — otherwise it reads its own
+ * semi-transparent value back, and the alpha would ratchet down on every
+ * repaint.
+ *
+ * @returns {object|null} `{scheme, base, label, sidebar}`, or null when there is
+ * no document to measure (headless tests, or a run before the shell mounts).
+ */
+function readPaletteFromDom(doc, win) {
+	if (doc === null || doc === undefined || win === null || win === undefined) return null;
+	if (doc.body === null || doc.body === undefined) return null;
+	if (typeof win.getComputedStyle !== "function") return null;
+	let style = null;
+	try {
+		style = win.getComputedStyle(doc.body);
+	} catch {
+		return null;
+	}
+	if (!style || typeof style.getPropertyValue !== "function") return null;
+	const token = (name) => {
+		const value = style.getPropertyValue(name);
+		return typeof value === "string" ? value.trim() : "";
+	};
+	// A fully transparent body is not a colour to wash from — it means this
+	// shell paints its canvas elsewhere. Fall back to the token, and treat two
+	// transparent answers as "nothing to measure" rather than washing with black.
+	let base = parseColor(style.backgroundColor);
+	if (base !== null && base.a === 0) base = parseColor(token(WASH_TOKENS[0]));
+	if (base === null || base.a === 0) return null;
+	const label = parseColor(token(LABEL_TOKEN)) || parseColor(style.color);
+	const sidebar = parseColor(token(WASH_TOKENS[1]));
+	const dark = typeof doc.body.hasAttribute === "function" && doc.body.hasAttribute("data-ds-dark-theme");
+	return { scheme: dark ? "dark" : "light", id: dark ? "dark" : "light", base, label, sidebar };
+}
+
 /**
  * Build the engine.
  *
@@ -193,6 +253,7 @@ function createEngine(options) {
 	let root = null;
 	let bleed = null;
 	const slots = [null, null];
+	let veil = null;
 	let grain = null;
 	let styleEl = null;
 	/** Which slot currently holds the visible picture. */
@@ -204,6 +265,17 @@ function createEngine(options) {
 	let activeItem = null;
 	/** Disposer for the current token-override layer. */
 	let overrideDispose = null;
+	/**
+	 * The un-washed palette, cached until the theme changes.
+	 *
+	 * Cached because measuring it means clearing the wash and forcing a style
+	 * recalculation; a wash slider emits one input per pixel, and doing that
+	 * sixty times a second would be visible. It only changes when the theme
+	 * does, which is exactly when the cache is dropped.
+	 */
+	let paletteCache = null;
+	/** Guards the theme-change handler against the publish it causes itself. */
+	let resolvingTheme = false;
 	/** Re-entrancy guard: `overrideTokens` emits `theme/change`, which we listen to. */
 	let applyingOverride = false;
 	let applying = false;
@@ -247,6 +319,10 @@ function createEngine(options) {
 		slots[1].style.opacity = "0";
 		root.appendChild(slots[0]);
 		root.appendChild(slots[1]);
+		// Above the pictures, below the shell: the single translucent layer.
+		veil = doc.createElement("div");
+		veil.setAttribute(ACTIVE_ATTR, "veil");
+		root.appendChild(veil);
 		grain = doc.createElement("div");
 		grain.setAttribute(ACTIVE_ATTR, "grain");
 		root.appendChild(grain);
@@ -290,22 +366,23 @@ function createEngine(options) {
 		}
 	}
 
-	/** Push the wash tokens for the given effective alpha. */
+	/**
+	 * Publish the wash: paint the veil, and hand the shell transparent surfaces.
+	 *
+	 * `alpha` is a single-layer alpha — it is written once, on this plugin's own
+	 * layer, so nothing compounds. `raw` supplies the colour to tint with.
+	 */
 	function applyWash(alpha, raw) {
-		if (raw === null || raw.base === null || typeof ctx.theme?.overrideTokens !== "function") return;
+		if (raw === null || raw.base === null) return;
+		if (veil !== null) veils(alpha, raw);
+		if (typeof ctx.theme?.overrideTokens !== "function") return;
 		applyingOverride = true;
 		try {
-			// Only the active scheme's colour is known, so it is used for both
-			// slots of the required {light, dark} pair. A scheme switch re-applies
-			// this whole function, so the pair is never stale in a way the user can
-			// see.
-			const washed = withAlpha(raw.base, alpha);
-			const sidebarBase = raw.sidebar !== null ? raw.sidebar : raw.base;
-			const sidebarWashed = withAlpha(sidebarBase, alpha);
-			const overrides = {
-				"--dsw-alias-bg-base": { light: washed, dark: washed },
-				"--dsw-specific-sidebar-fill": { light: sidebarWashed, dark: sidebarWashed }
-			};
+			// Transparent, not translucent: every surface painted with these
+			// tokens steps aside completely, and the veil above the picture is the
+			// only thing between the user and the wallpaper.
+			const overrides = {};
+			for (const name of WASH_TOKENS) overrides[name] = { light: "transparent", dark: "transparent" };
 			const previous = overrideDispose;
 			overrideDispose = ctx.theme.overrideTokens("dsh-lumen:wash", overrides);
 			if (typeof previous === "function") previous();
@@ -318,14 +395,43 @@ function createEngine(options) {
 		}
 	}
 
+	/** Paint the veil itself. */
+	function veils(alpha, raw) {
+		// `withAlpha` already returns a CSS colour string; formatting it again
+		// would round NaN channels out of a string.
+		veil.style.backgroundColor = withAlpha(raw.base, alpha);
+	}
+
+	/**
+	 * The palette the wash is solved against.
+	 *
+	 * The document wins over the theme registry, because the document is what
+	 * the user can actually see (see `readPaletteFromDom`). The registry is kept
+	 * as a fallback so a DOM-less run — the preview harness, the tests — behaves
+	 * as before.
+	 */
+	function palette() {
+		if (paletteCache !== null) return paletteCache;
+		const measured = readPaletteFromDom(doc, win);
+		if (measured !== null) {
+			paletteCache = measured;
+			return measured;
+		}
+		return readRawTheme(ctx);
+	}
+
 	/** Drop the wash layer. */
 	function clearWash() {
-		if (typeof overrideDispose === "function") {
+		// Detached *before* the disposer runs: disposing publishes a
+		// `theme/change`, and a handler that found the old disposer still
+		// installed would call it a second time.
+		const dispose = overrideDispose;
+		overrideDispose = null;
+		if (typeof dispose === "function") {
 			try {
-				overrideDispose();
+				dispose();
 			} catch {}
 		}
-		overrideDispose = null;
 	}
 
 	/**
@@ -345,7 +451,12 @@ function createEngine(options) {
 			// comes from this recipe's own declared complexity rather than a flat
 			// rule, so how much help the text gets tracks how much this particular
 			// wallpaper actually fights it.
-			const lift = background.complexity * 0.12;
+			//
+			// Small on purpose. At 0.12 a mid-complexity photo gained six points
+			// on top of a 0.5 default and the picture disappeared behind white; a
+			// nudge that thickens the veil without un-choosing the wallpaper's
+			// transparency is the whole point of this term.
+			const lift = background.complexity * 0.08;
 			effective = Math.min(0.98, effective + lift);
 		}
 		effective = Math.max(effective, required);
@@ -388,7 +499,7 @@ function createEngine(options) {
 				} catch {}
 				return;
 			}
-			const raw = readRawTheme(ctx);
+			const raw = palette();
 			const wash = state.wash;
 			const identity = `${item.kind}|${item.ref}|${item.seed}`;
 			// `position` belongs in the key even though it repaints nothing: without
@@ -472,6 +583,7 @@ function createEngine(options) {
 		bleed = null;
 		slots[0] = null;
 		slots[1] = null;
+		veil = null;
 		grain = null;
 		styleEl = null;
 	}
@@ -582,13 +694,23 @@ function createEngine(options) {
 	function attachListeners() {
 		if (ctx !== null && typeof ctx.on === "function") {
 			onThemeChange = () => {
-				if (applyingOverride) return;
-				// The theme swapped underneath us: repaint from the raw theme with no
-				// transition, so a light/dark switch does not cross-fade the
-				// wallpaper against itself.
-				lastIdentity = null;
-				lastRenderKey = null;
-				render(store.getState(), true);
+				if (applyingOverride || resolvingTheme) return;
+				resolvingTheme = true;
+				try {
+					// The palette this plugin is washing has just been replaced, and
+					// the wash it installed may still be in the document. Start from
+					// the raw one again, or the next read measures our own layer.
+					paletteCache = null;
+					clearWash();
+					// The theme swapped underneath us: repaint from the raw theme with
+					// no transition, so a light/dark switch does not cross-fade the
+					// wallpaper against itself.
+					lastIdentity = null;
+					lastRenderKey = null;
+					render(store.getState(), true);
+				} finally {
+					resolvingTheme = false;
+				}
 			};
 			ctx.on("theme/change", onThemeChange);
 		}
@@ -673,9 +795,12 @@ function createEngine(options) {
 			plan: lastPlan,
 			reducedMotion,
 			hasDom: root !== null,
-			active: root !== null
+			active: root !== null,
+			/** Whether the translucent canvas is actually published. Without it the
+			 *  wallpaper exists but nothing can be seen through the shell. */
+			washed: overrideDispose !== null && veil !== null
 		})
 	};
 }
 
-module.exports = { createEngine, itemToBackground, readRawTheme, ACTIVE_ATTR, STYLE_ID, NOISE_URI, CONTRAST_TARGET };
+module.exports = { createEngine, itemToBackground, readRawTheme, readPaletteFromDom, ACTIVE_ATTR, STYLE_ID, NOISE_URI, CONTRAST_TARGET, WASH_TOKENS };

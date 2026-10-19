@@ -52,6 +52,7 @@ image.prepareImage = async (file) => {
 
 const { createPanel, itemLabel, formatDuration, formatClockStamp } = require("../src/ui/panel.cjs");
 const { createStore } = require("../src/store.cjs");
+const { RECIPES } = require("../src/wallpapers.cjs");
 const { createTranslator, NS } = require("../src/i18n.cjs");
 const { ACTIVE_ATTR } = require("../src/engine.cjs");
 
@@ -273,9 +274,12 @@ test("a raised readability floor is disclosed, not silently applied", () => {
 	// exceeds what the user asked for.
 	engine.setRequirement(0.62);
 	panel.sync();
+	// The engine solves in veil terms (0.62), the slider is in picture terms, so
+	// the disclosure has to print the complement — the number the user is looking
+	// at. "Raised to 62%" beside a slider reading 38% reads as a bug.
 	const raised = note();
-	assert.equal(raised.indexOf("62") >= 0, true, `the raised floor was not disclosed: ${raised}`);
-	assert.equal(noteWith("62").classList.contains("is-warn"), true, "the disclosure was not marked as a warning");
+	assert.equal(raised.indexOf("38") >= 0, true, `the raised floor was not disclosed: ${raised}`);
+	assert.equal(noteWith("38").classList.contains("is-warn"), true, "the disclosure was not marked as a warning");
 
 	// Turning the floor off stops the disclosure, even though the engine still
 	// reports a requirement — the user opted out of it.
@@ -291,7 +295,7 @@ test("a raised readability floor is disclosed, not silently applied", () => {
 test("clicking a recipe chip writes the wallpaper through to the store", () => {
 	const { panel, store, engine } = makePanel();
 	const chips = byClass(panel.el, "lumen-chip");
-	assert.ok(chips.length >= 12, `only ${chips.length} recipe chips were rendered`);
+	assert.equal(chips.length, RECIPES.length, "the chip strip does not match the library");
 	const before = store.getState().single.ref;
 	const target = chips.find((chip) => chip.dataset.recipe !== before);
 	assert.ok(target, "no chip to click");
@@ -307,13 +311,13 @@ test("clicking a recipe chip writes the wallpaper through to the store", () => {
 test("the current recipe is marked in the chip strip", () => {
 	const { panel, store } = makePanel();
 	store.update((draft) => {
-		draft.single = { ...draft.single, kind: "recipe", ref: "ember" };
+		draft.single = { ...draft.single, kind: "recipe", ref: "dune" };
 		return draft;
 	});
 	panel.sync();
 	const on = byClass(panel.el, "lumen-chip").filter((chip) => chip.classList.contains("is-on"));
 	assert.equal(on.length, 1, `expected exactly one marked chip, found ${on.length}`);
-	assert.equal(on[0].dataset.recipe, "ember");
+	assert.equal(on[0].dataset.recipe, "dune");
 	panel.destroy();
 });
 
@@ -341,6 +345,24 @@ test("enabling rotation switches the mode and asks the engine to reschedule", ()
 	panel.destroy();
 });
 
+test("a wallpaper change is confirmed with a toast, and the toast leaves with the panel", () => {
+	// "It worked" is the one thing a panel this tall cannot say with a banner at
+	// the top: the user is looking at the page, not at the panel.
+	const { panel, t } = makePanel();
+	const chip = byClass(panel.el, "lumen-chip").find((el) => el.dataset.recipe === "dune");
+	assert.ok(chip, "the ember chip was not rendered");
+	chip.dispatch("click", {});
+
+	const toast = byClass(panel.el, "lumen-toast");
+	assert.equal(toast.length, 1, "setting a wallpaper produced no confirmation");
+	assert.ok(toast[0].classList.contains("is-on"), "the confirmation was never shown");
+	assert.ok(textOf(toast[0]).indexOf(t("toast.applied")) < 0, "the toast leaked an unformatted template");
+	assert.ok(textOf(toast[0]).length > 0, "the confirmation carried no text");
+
+	panel.destroy();
+	assert.equal(byClass(panel.el, "lumen-toast").length, 0, "the toast outlived the panel");
+});
+
 test("rotation refuses to arm an empty playlist instead of rotating nothing", () => {
 	// A rotation over zero entries would tick forever and change nothing. The
 	// switch must decline — and say why — rather than persist a broken mode.
@@ -354,6 +376,44 @@ test("rotation refuses to arm an empty playlist instead of rotating nothing", ()
 	// The refusal is explained rather than being a switch that silently does
 	// nothing, which is the behaviour a user would read as a bug.
 	assert.ok(textOf(panel.el).indexOf(t("rotation.empty")) >= 0, "the refusal was not explained");
+	// ...and the explanation has to follow the user, not sit at the top of the
+	// panel out of sight: the message line is sticky for exactly that reason.
+	const banner = byClass(panel.el, "lumen-banner");
+	assert.equal(banner.length, 1, "the panel has no banner to report through");
+	assert.notEqual(banner[0].style.display, "none", "the banner reported itself as hidden");
+	assert.ok(textOf(banner[0]).indexOf(t("rotation.empty")) >= 0, "the banner did not carry the refusal");
+	// The empty state sits under the switch itself, so it is the one piece of
+	// feedback that is on screen no matter where the panel is scrolled.
+	const empty = byClass(panel.el, "lumen-empty-state");
+	assert.equal(empty.length, 1, "the empty state was not rendered");
+	assert.ok(empty[0].classList.contains("is-refused"), "the refused switch left no mark next to itself");
+	panel.destroy();
+});
+
+test("an empty playlist offers a one-click fill with the built-in wallpapers", () => {
+	// The refusal above is correct but a dead end on its own: the user asked for
+	// rotation and got told to go find wallpapers. One button in the empty state
+	// turns it into a working rotation over the plugin's own designs.
+	const { panel, store, engine, t } = makePanel();
+	store.update((draft) => {
+		draft.single = { ...draft.single, kind: "recipe", ref: "dune" };
+		return draft;
+	});
+	const button = walk(panel.el).find((el) => el.nodeType === 1 && el.tagName === "BUTTON" && textOf(el) === t("rotation.seed"));
+	assert.ok(button, "the empty state did not offer a fill button");
+
+	const before = engine.calls.reschedule;
+	button.dispatch("click", {});
+
+	const state = store.getState();
+	assert.equal(state.playlist.length, RECIPES.length, "the fill did not add every built-in");
+	assert.equal(state.mode, "rotation", "the fill did not arm the rotation");
+	assert.ok(engine.calls.reschedule > before, "the schedule was not re-armed");
+	// The wallpaper the user was looking at is not replaced in `single`: turning
+	// the rotation back off has to return it.
+	assert.equal(state.single.ref, "dune", "the fill overwrote the single wallpaper");
+	// The rows are deletable, so the fill is an offer rather than a lock-in.
+	assert.equal(byClass(panel.el, "lumen-list-item").length, RECIPES.length);
 	panel.destroy();
 });
 
@@ -385,7 +445,7 @@ test("removing a playlist entry is applied to the store", () => {
 	store.update((draft) => {
 		draft.playlist = [
 			{ id: "a1", kind: "recipe", ref: "aurora", seed: "s1" },
-			{ id: "b2", kind: "recipe", ref: "ember", seed: "s2" }
+			{ id: "b2", kind: "recipe", ref: "dune", seed: "s2" }
 		];
 		draft.mode = "rotation";
 		return draft;
@@ -408,8 +468,8 @@ test("reordering a playlist entry moves it and keeps the cursor sensible", () =>
 	store.update((draft) => {
 		draft.playlist = [
 			{ id: "a1", kind: "recipe", ref: "aurora", seed: "s1" },
-			{ id: "b2", kind: "recipe", ref: "ember", seed: "s2" },
-			{ id: "c3", kind: "recipe", ref: "abyss", seed: "s3" }
+			{ id: "b2", kind: "recipe", ref: "dune", seed: "s2" },
+			{ id: "c3", kind: "recipe", ref: "aurora", seed: "s3" }
 		];
 		draft.mode = "rotation";
 		draft.cursor = 1;
@@ -469,6 +529,29 @@ test("a schedule change re-arms the timer and is persisted", () => {
 	panel.destroy();
 });
 
+test("the visibility slider moves in the direction its label promises", () => {
+	// The control used to expose the VEIL, so dragging it right made the
+	// wallpaper fainter while the readout went up. A user looking at a barely
+	// visible wallpaper parked it at 0.98 — the maximum — and reported "it is
+	// still too faint". Whatever the number means, right must mean more picture.
+	const { panel, store, t } = makePanel();
+	const input = byClass(panel.el, "lumen-slider-input").find(
+		(el) => el.getAttribute("aria-label") === t("appearance.opacity")
+	);
+	assert.ok(input, "the appearance slider is missing");
+	const veil = () => store.getState().wash.opacity;
+
+	input.value = "0.8";
+	input.dispatch("input", {});
+	const thin = veil();
+	input.value = "0.1";
+	input.dispatch("input", {});
+	const thick = veil();
+	assert.ok(thin < thick, `moving the slider right should show more wallpaper, not less: 80% gave veil ${thin}, 10% gave ${thick}`);
+	assert.equal(Math.round(thin * 100), 20, "80% visibility did not become a 20% veil");
+	panel.destroy();
+});
+
 test("out-of-range schedule input is normalised before it reaches the store", () => {
 	const { panel, store } = makePanel();
 	// A hand-edited or clamped input must never persist a value the scheduler
@@ -491,7 +574,7 @@ test("out-of-range schedule input is normalised before it reaches the store", ()
 test("the panel follows the store rather than owning a copy", () => {
 	const { panel, store } = makePanel();
 	store.update((draft) => {
-		draft.single = { ...draft.single, kind: "recipe", ref: "abyss", seed: "s9" };
+		draft.single = { ...draft.single, kind: "recipe", ref: "aurora", seed: "s9" };
 		return draft;
 	});
 	// No explicit sync: the panel subscribes.

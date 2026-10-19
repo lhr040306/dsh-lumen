@@ -26,9 +26,12 @@ const {
 	currentItem,
 	createItem,
 	createItemId,
+	DEFAULT_STATE,
 	MAX_PLAYLIST,
 	OPACITY_MIN,
 	OPACITY_MAX,
+	VISIBILITY_MIN,
+	VISIBILITY_MAX,
 	BLUR_MIN,
 	BLUR_MAX,
 	WASH_POSITIONS
@@ -49,6 +52,8 @@ const { createTranslator } = require("../i18n.cjs");
 const HOUR_PRESETS = [0, 15, 30, 45];
 /** How often the countdown readout refreshes, ms. */
 const TICK_MS = 1000;
+/** How long a confirmation toast stays up, ms. */
+const TOAST_MS = 1900;
 
 /**
  * The nine cells of the position grid, in reading order.
@@ -159,6 +164,9 @@ function createPanel(deps) {
 	let destroyed = false;
 	let rafPending = false;
 	let ticker = null;
+	/** The confirmation toast's node and dismissal timer (created on first use). */
+	let toastNode = null;
+	let toastTimer = null;
 	/** Transient user-facing message (an image that would not process, a copy result). */
 	const banner = { text: null, warn: false };
 	/** Editor drafts, kept out of persisted state until the user commits them. */
@@ -188,6 +196,50 @@ function createPanel(deps) {
 	}
 
 	/**
+	 * Confirm a wallpaper change with a short-lived toast.
+	 *
+	 * The banner is the panel's error channel and it sits inside the section;
+	 * the point of this one is different — the user just clicked a picture and
+	 * is looking at the *page*, not at the panel. So it is anchored to the
+	 * viewport, it is never an error, and it says only one thing: what is now on
+	 * screen. Successes are deliberately not routed through `say()`: a rotating
+	 * wallpaper announcing itself in the error line would make every good
+	 * outcome look like a warning.
+	 */
+	function toast(text) {
+		if (text === null || text === undefined || text === "" || destroyed) return;
+		if (doc === null || doc.body === null || doc.body === undefined) return;
+		if (toastNode === null) {
+			toastNode = dom.h("div", {
+				class: "lumen-toast",
+				attrs: { role: "status", "aria-live": "polite" }
+			});
+		}
+		toastNode.textContent = String(text);
+		// Parented to the panel, not to `document.body`: the toast then inherits
+		// the `--lumen-*` alias layer (so it follows a third-party theme) and is
+		// torn down with the panel. It is `position:fixed`, so the panel's own
+		// scrolling does not move it.
+		if (toastNode.parentNode !== root) root.appendChild(toastNode);
+		toastNode.classList.remove("is-on");
+		// Reading layout between the two class writes is what restarts the
+		// transition when the same message is confirmed twice in a row.
+		if (typeof toastNode.getBoundingClientRect === "function") void toastNode.getBoundingClientRect();
+		toastNode.classList.add("is-on");
+		if (toastTimer !== null) clearTimeout(toastTimer);
+		toastTimer = setTimeout(() => {
+			toastTimer = null;
+			if (toastNode !== null) toastNode.classList.remove("is-on");
+		}, TOAST_MS);
+	}
+
+	/** The sentence a successful change is confirmed with. */
+	function confirmApplied() {
+		const item = currentItem(store.getState());
+		toast(t("toast.applied", { name: itemLabel(item, lang, t) }));
+	}
+
+	/**
 	 * Replace a field on whichever entry is on screen.
 	 * In rotation mode that is the *current playlist entry*, so clicking a recipe
 	 * while rotating edits the slot you are looking at rather than silently
@@ -206,6 +258,9 @@ function createPanel(deps) {
 		store.save();
 		requestRender();
 		sync();
+		// Confirm after the state write, so the toast names the picture the
+		// engine has just been told to paint rather than the one it replaces.
+		confirmApplied();
 	}
 
 	/** Apply a wash change and repaint (tokens effectively change, not the picture). */
@@ -252,19 +307,6 @@ function createPanel(deps) {
 		patchCurrent({ seed });
 	}
 
-	function copySeed() {
-		const item = currentItem(store.getState());
-		const text = `${item.ref}${item.seed === "default" ? "" : `#${item.seed}`}`;
-		try {
-			if (win !== null && win.navigator && win.navigator.clipboard) {
-				win.navigator.clipboard.writeText(text);
-				say(t("hero.copied"), false);
-				return;
-			}
-		} catch {}
-		say(text, false);
-	}
-
 	function addCurrentToList() {
 		const state = store.getState();
 		if (state.playlist.length >= MAX_PLAYLIST) {
@@ -289,9 +331,12 @@ function createPanel(deps) {
 	}
 
 	{
+		// Two buttons, not three. "Copy seed" was the third and it earned its
+		// removal: the seed is already printed in the hero's subtitle, it is
+		// niche, and every extra control in the header pushes the actual
+		// wallpapers further down the panel.
 		const actions = dom.h("div", { class: "lumen-hero-actions" });
 		actions.appendChild(dom.button(t("hero.shake"), shake, { small: true, hint: t("hero.shake.hint") }));
-		actions.appendChild(dom.button(t("hero.copySeed"), copySeed, { small: true, variant: "ghost" }));
 		actions.appendChild(dom.button(t("hero.add"), addCurrentToList, { small: true, variant: "ghost" }));
 		const meta = dom.h("div", { class: "lumen-hero-meta" }, [heroName, heroSub, actions]);
 		heroNode.appendChild(dom.h("div", { class: "lumen-hero" }, [heroPreview, meta]));
@@ -376,6 +421,7 @@ function createPanel(deps) {
 		store.save();
 		requestRender();
 		sync();
+		confirmApplied();
 		return dropped;
 	}
 
@@ -490,28 +536,62 @@ function createPanel(deps) {
 		}
 		patchCurrent({ kind: "url", ref: value, seed: "default" });
 	}
-	const localRow = dom.row(t("custom.local"), t("custom.local.hint"), [
-		picker,
-		dom.button(t("custom.choose"), () => picker.click(), { small: true })
-	]);
-	// Dropping onto the row (not just the button) is what makes "drag a folder of
-	// candidates in" work — the row is the thing the user aims at.
-	dom.acceptDrops(localRow, importFiles);
-	customGroup.appendChild(localRow);
-	customGroup.appendChild(
-		dom.row(t("custom.url"), t("custom.url.hint"), [dom.button(t("custom.apply"), applyUrl, { small: true })])
-	);
-	customGroup.appendChild(dom.h("div", { class: "lumen-row is-stack" }, urlInput));
-	customGroup.appendChild(dom.h("div", { class: "lumen-divider" }));
-	customGroup.appendChild(
-		dom.row(t("custom.gradient"), t("custom.gradient.hint"), [
-			fromInput,
-			toInput,
-			dom.button(t("custom.apply"), applyGradient, { small: true })
-		])
-	);
-	customGroup.appendChild(dom.h("div", { class: "lumen-row is-stack" }, angleSlider.el));
+	/**
+	 * The three custom sources are one control, not three stacked rows.
+	 *
+	 * They used to be laid out in full — a picker, a URL box, two colour wells
+	 * and an angle slider, each with its own button — which is a lot of panel
+	 * for the one source a person is actually using. A segmented switch shows
+	 * only the chosen source, so the card carries one button at a time instead
+	 * of three and the panel is two thirds shorter.
+	 */
+	let customSource = "local";
+	const customBody = dom.h("div", { class: "lumen-source-body" });
+	const customSwitch = dom.segmented({
+		value: "local",
+		options: [
+			{ value: "local", label: t("custom.local") },
+			{ value: "url", label: t("custom.url") },
+			{ value: "gradient", label: t("custom.gradient") }
+		],
+		onChange: (value) => {
+			customSource = value;
+			renderCustomSource();
+		}
+	});
+
+	function renderCustomSource() {
+		dom.clear(customBody);
+		if (customSource === "local") {
+			const localRow = dom.row(null, t("custom.local.hint"), [
+				picker,
+				dom.button(t("custom.choose"), () => picker.click(), { small: true })
+			]);
+			// Dropping onto the row (not just the button) is what makes "drag a
+			// folder of candidates in" work — the row is the thing the user aims at.
+			dom.acceptDrops(localRow, importFiles);
+			customBody.appendChild(localRow);
+		} else if (customSource === "url") {
+			customBody.appendChild(dom.h("div", { class: "lumen-row is-stack" }, urlInput));
+			customBody.appendChild(
+				dom.row(null, t("custom.url.hint"), [dom.button(t("custom.apply"), applyUrl, { small: true })])
+			);
+		} else {
+			customBody.appendChild(
+				dom.row(null, t("custom.gradient.hint"), [
+					fromInput,
+					toInput,
+					dom.button(t("custom.apply"), applyGradient, { small: true })
+				])
+			);
+			customBody.appendChild(dom.h("div", { class: "lumen-row is-stack" }, angleSlider.el));
+		}
+	}
+
+	customGroup.appendChild(dom.row(t("custom.source"), null, customSwitch.el));
+	customGroup.appendChild(customBody);
 	customGroup.appendChild(imageHint);
+	renderCustomSource();
 
 	// ── splash: one file, and a destination the user picks afterwards ─────────
 	//
@@ -698,6 +778,10 @@ function createPanel(deps) {
 			const state = store.getState();
 			if (on && state.playlist.length === 0) {
 				say(t("rotation.empty"), true);
+				// Light up the empty state, which sits directly under this switch
+				// and carries the fill button. The banner above explains it too,
+				// but the banner can be scrolled out of view — this cannot.
+				playlistEmpty.classList.add("is-refused");
 				// Refuse the switch rather than arming a rotation with nothing in it.
 				rotationToggle.set(false);
 				return;
@@ -715,7 +799,49 @@ function createPanel(deps) {
 		}
 	});
 	const playlistNode = dom.h("div", { class: "lumen-list" });
-	const playlistEmpty = dom.h("div", { class: "lumen-empty", text: t("rotation.empty") });
+
+	/**
+	 * Fill an empty playlist with the built-in recipes and arm the rotation.
+	 *
+	 * WHY THIS EXISTS. Turning the switch on with nothing in the list is the
+	 * *first* thing a new user does, and the only correct answer used to be a
+	 * refusal — right, but a dead end: the sentence explaining it lived in the
+	 * banner at the very top of a long panel, so from the rotation section the
+	 * switch simply snapped back and looked broken. The refusal stays (a
+	 * rotation over zero entries would tick forever and change nothing), and
+	 * this is the button that turns the dead end into one click.
+	 *
+	 * It seeds the *generated* wallpapers, never the user's own: those are the
+	 * plugin's own content, they cost nothing to store, and each row can be
+	 * deleted from the list. `single` is deliberately left alone, so turning
+	 * the rotation back off returns the picture that was there before.
+	 */
+	function seedBuiltins() {
+		const items = RECIPES.map((recipe) => createItem("recipe", recipe.id, "default")).filter((item) => item !== null);
+		if (items.length === 0) {
+			say(t("rotation.unstorable"), true);
+			return;
+		}
+		store.update((draft) => {
+			draft.playlist = items;
+			draft.mode = "rotation";
+			draft.paused = false;
+			draft.cursor = 0;
+			draft.remaining = [];
+			return draft;
+		});
+		store.save();
+		engine.reschedule();
+		requestRender();
+		say(t("rotation.seeded", { n: items.length }), false);
+		sync();
+	}
+
+	const seedButton = dom.button(t("rotation.seed"), seedBuiltins, { small: true });
+	const playlistEmpty = dom.h("div", { class: "lumen-empty-state" }, [
+		dom.h("div", { class: "lumen-empty", text: t("rotation.empty") }),
+		seedButton
+	]);
 	const orderHint = dom.h("span", { class: "lumen-note" });
 	const triggerFields = dom.h("div", { class: "lumen-list" });
 	const upcomingNode = dom.h("div", { class: "lumen-upcoming" });
@@ -804,6 +930,9 @@ function createPanel(deps) {
 			playlistNode.appendChild(playlistEmpty);
 			return;
 		}
+		// The highlight below belongs to the refused attempt, not to the empty
+		// list: once there is something to rotate it has served its purpose.
+		playlistEmpty.classList.remove("is-refused");
 		state.playlist.forEach((item, index) => {
 			const isCurrent = state.mode === "rotation" && index === state.cursor;
 			const row = dom.h("div", { class: `lumen-list-item${isCurrent ? " is-current" : ""}` }, [
@@ -886,28 +1015,52 @@ function createPanel(deps) {
 		rotationGroup.appendChild(dom.h("div", { class: "lumen-divider" }));
 		rotationGroup.appendChild(dom.row(t("rotation.trigger"), null, modeControl.el));
 		rotationGroup.appendChild(triggerFields);
-		rotationGroup.appendChild(
-			dom.row(t("rotation.order"), null, [orderControl.el, orderHint])
-		);
-		rotationGroup.appendChild(dom.h("div", { class: "lumen-row is-stack" }, transitionSlider.el));
-		rotationGroup.appendChild(dom.h("div", { class: "lumen-row" }, [
+		// Order, transition and the transport controls stay available but folded:
+		// they are preferences a user sets once, and unfolded they put seven
+		// controls between the trigger and the countdown. `<details>` keeps that
+		// one line long without a second piece of open/closed state to persist.
+		const advanced = dom.h("details", { class: "lumen-advanced" });
+		advanced.appendChild(dom.h("summary", { class: "lumen-advanced-summary", text: t("rotation.advanced") }));
+		advanced.appendChild(dom.row(t("rotation.order"), null, [orderControl.el, orderHint]));
+		advanced.appendChild(dom.h("div", { class: "lumen-row is-stack" }, transitionSlider.el));
+		advanced.appendChild(dom.h("div", { class: "lumen-row" }, [
 			dom.h("span", { class: "lumen-row-title", text: t("rotation.upcoming") }),
 			dom.h("span", { class: "lumen-row-control" }, [pauseButton, nextButton])
 		]));
-		rotationGroup.appendChild(upcomingNode);
-		rotationGroup.appendChild(missedNode);
+		advanced.appendChild(upcomingNode);
+		advanced.appendChild(missedNode);
+		rotationGroup.appendChild(advanced);
 	}
 
 	// ── appearance ────────────────────────────────────────────────────────────
 
+	/**
+	 * The one slider whose direction was a trap, so it is now inverted.
+	 *
+	 * It used to be labelled "wash opacity" and moved the veil directly, which
+	 * meant moving it RIGHT made the wallpaper fainter. The evidence that this
+	 * reads backwards is in the field: a user who reported "the wallpaper is too
+	 * faint" had the slider parked at 0.98 — the maximum — because more looked
+	 * like better. A control that says 98% while showing 2% of the picture is not
+	 * a labelling problem, it is the wrong quantity.
+	 *
+	 * So the slider now carries the number the user actually cares about —
+	 * how much of the wallpaper is on screen — and the veil is its complement.
+	 * The state field stays `wash.opacity` (the veil), because that is what the
+	 * engine solves the readability floor against; only the presentation flips.
+	 */
+	const visibility = (opacity) => clamp(1 - opacity, VISIBILITY_MIN, VISIBILITY_MAX);
 	const opacitySlider = dom.slider({
-		min: OPACITY_MIN,
-		max: OPACITY_MAX,
+		min: VISIBILITY_MIN,
+		max: VISIBILITY_MAX,
 		step: 0.01,
-		value: 0.82,
+		// The initial value is overwritten by `sync()` on the first paint; it is
+		// derived from the default rather than typed out so the two cannot drift
+		// and show a number the engine is not using.
+		value: visibility(DEFAULT_STATE.wash.opacity),
 		label: t("appearance.opacity"),
 		format: (v) => `${Math.round(v * 100)}%`,
-		onInput: (v) => patchWash({ opacity: clamp(v, OPACITY_MIN, OPACITY_MAX) })
+		onInput: (v) => patchWash({ opacity: clamp(1 - v, OPACITY_MIN, OPACITY_MAX) })
 	});
 	const opacityNote = dom.h("span", { class: "lumen-note" });
 	const blurSlider = dom.slider({
@@ -981,7 +1134,11 @@ function createPanel(deps) {
 	// ── status ────────────────────────────────────────────────────────────────
 
 	const statusGroup = dom.h("div", { class: "lumen-card" });
-	const bannerNode = dom.h("div", { class: "lumen-note" });
+	// `lumen-banner` is sticky: every message this panel reports lands in this
+	// one node, and the panel is tall enough that an unscrolled message is
+	// indistinguishable from no message at all. That was the real reason the
+	// rotation switch "did nothing" — it had said why, 900px above the switch.
+	const bannerNode = dom.h("div", { class: "lumen-note lumen-banner" });
 
 	function renderStatus(state) {
 		dom.clear(statusGroup);
@@ -990,11 +1147,19 @@ function createPanel(deps) {
 		const rows = [
 			[t("status.storage"), health.hostAvailable ? t("status.storage.host") : t("status.storage.local")],
 			[t("status.dom"), inspect.active ? t("status.on") : t("status.off")],
+			[t("status.wash"), inspect.washed === false ? t("status.off") : t("status.on")],
 			[t("status.motion"), inspect.reducedMotion ? t("status.on") : t("status.off")],
 			[t("status.regime"), state.mode === "rotation" ? (state.paused ? t("rotation.paused") : t("rotation.enable")) : t("status.regime.fixed")]
 		];
 		for (const [key, value] of rows) {
 			statusGroup.appendChild(dom.h("div", { class: "lumen-kv" }, [dom.h("span", { text: key }), dom.h("b", { text: value })]));
+		}
+		// The single most useful line in this panel when the wallpaper "does
+		// nothing": the layer can be perfect and still be invisible behind an
+		// opaque shell. 1.0.1 shipped exactly that — the wash was never
+		// published, because the built-in themes carry no tokens to read.
+		if (inspect.washed === false) {
+			statusGroup.appendChild(dom.h("div", { class: "lumen-note is-warn", text: t("status.washBlocked") }));
 		}
 		if (!health.hostAvailable && health.hostReason) {
 			statusGroup.appendChild(dom.h("div", { class: "lumen-note is-warn", text: `${t("status.reason")}: ${health.hostReason}` }));
@@ -1042,7 +1207,7 @@ function createPanel(deps) {
 
 		// banner
 		bannerNode.textContent = banner.text === null ? "" : banner.text;
-		bannerNode.className = `lumen-note${banner.warn ? " is-warn" : ""}`;
+		bannerNode.className = `lumen-note lumen-banner${banner.warn ? " is-warn" : ""}`;
 		bannerNode.style.display = banner.text === null ? "none" : "";
 
 		// recipe chips
@@ -1114,7 +1279,7 @@ function createPanel(deps) {
 		missedNode.style.display = missed > 1 ? "" : "none";
 
 		// appearance
-		opacitySlider.set(state.wash.opacity);
+		opacitySlider.set(visibility(state.wash.opacity));
 		blurSlider.set(state.wash.blur);
 		fitControl.set(state.wash.fit);
 		positionControl.set(state.wash.position);
@@ -1125,7 +1290,10 @@ function createPanel(deps) {
 		readabilityToggle.set(state.wash.readability);
 		const required = engine.inspect().requiredAlpha;
 		if (state.wash.readability && required > state.wash.opacity + 0.005) {
-			opacityNote.textContent = t("appearance.raised", { n: Math.round(required * 100) });
+			// The floor is solved in veil terms, but the slider is in picture
+			// terms now, so the message is translated rather than echoed: reading
+			// "raised to 43%" next to a slider showing 57% would look like a bug.
+			opacityNote.textContent = t("appearance.raised", { n: Math.round((1 - required) * 100) });
 			opacityNote.className = "lumen-note is-warn";
 		} else {
 			opacityNote.textContent = t("appearance.opacity.hint");
@@ -1172,6 +1340,13 @@ function createPanel(deps) {
 			unsubscribe();
 			if (ticker !== null && win !== null) win.clearInterval(ticker);
 			ticker = null;
+			// The toast lives on `document.body`, outside this panel's subtree, so
+			// unmounting the section would otherwise leave it floating over the
+			// app until its timer expired.
+			if (toastTimer !== null) clearTimeout(toastTimer);
+			toastTimer = null;
+			if (toastNode !== null && toastNode.parentNode) toastNode.parentNode.removeChild(toastNode);
+			toastNode = null;
 		}
 	};
 }

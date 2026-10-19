@@ -1,6 +1,6 @@
 "use strict";
 /**
- * The built-in wallpaper library — twelve recipes, zero image assets.
+ * The built-in wallpaper library — seven recipes, zero image assets.
  *
  * WHY GENERATED INSTEAD OF SHIPPED PICTURES
  *
@@ -201,184 +201,6 @@ const RECIPES = [
 		}
 	},
 	{
-		id: "abyss",
-		name: { zh: "深海", en: "Abyss" },
-		scheme: "dark",
-		tags: ["deep", "cool"],
-		defaultSoftness: 0.66,
-		defaultGrain: 0.16,
-		complexity: 0.34,
-		build(p, rng) {
-			const h = 194 + p.hue;
-			const soft = self(0.66, p.softness);
-			const layers = [
-				linear(rng.range(12, 32), [
-					`${withAlpha(tone(0.1, 0.03, h + 10), 0)} 0%`,
-					`${withAlpha(tone(0.26, 0.07, h), 0.72)} ${n(rng.range(66, 84))}%`,
-					`${withAlpha(tone(0.34, 0.08, h - 14), 0.9)} 100%`
-				]),
-				radial({
-					x: rng.range(28, 72),
-					y: rng.range(74, 92),
-					rx: 74 * (0.7 + soft * 0.7),
-					ry: 40 * (0.7 + soft * 0.7),
-					color: tone(0.5, 0.1, h - 8),
-					alpha: 0.3,
-					fade: 100
-				}),
-				vignette(0.52 + soft * 0.12, 18)
-			];
-			return { layers, base: tone(0.09, 0.024, h + 6) };
-		}
-	},
-	{
-		id: "ember",
-		name: { zh: "暮霭", en: "Ember" },
-		scheme: "dark",
-		tags: ["warm", "dusk"],
-		defaultSoftness: 0.7,
-		defaultGrain: 0.26,
-		complexity: 0.44,
-		build(p, rng) {
-			const h = 34 + p.hue;
-			const soft = self(0.7, p.softness);
-			const layers = [
-				linear(rng.range(200, 240), [
-					`${withAlpha(tone(0.58, 0.11, h + 12), 0.72)} 0%`,
-					`${withAlpha(tone(0.4, 0.09, h - 10), 0.5)} ${n(rng.range(40, 58))}%`,
-					`${withAlpha(tone(0.24, 0.07, h - 92), 0.6)} 100%`
-				]),
-				radial({
-					x: rng.range(18, 46),
-					y: rng.range(22, 46),
-					rx: 66 * (0.7 + soft * 0.7),
-					ry: 48 * (0.7 + soft * 0.7),
-					color: tone(0.68, 0.1, h + 8),
-					alpha: 0.42,
-					fade: 100
-				}),
-				radial({
-					x: rng.range(58, 88),
-					y: rng.range(58, 86),
-					rx: 60 * (0.7 + soft * 0.7),
-					ry: 44 * (0.7 + soft * 0.7),
-					color: tone(0.4, 0.09, h - 110),
-					alpha: 0.36,
-					fade: 100
-				}),
-				vignette(0.36 + soft * 0.14, 34)
-			];
-			return { layers, base: tone(0.19, 0.045, h - 34) };
-		}
-	},
-	{
-		id: "mono",
-		name: { zh: "墨韵", en: "Mono" },
-		scheme: "dark",
-		tags: ["minimal", "neutral"],
-		defaultSoftness: 0.58,
-		defaultGrain: 0.2,
-		complexity: 0.18,
-		build(p, rng) {
-			// Chroma deliberately near zero: this is the "no colour opinion"
-			// recipe, and it must stay neutral whatever the hue slider says.
-			const chromaScale = 1 - Math.min(1, Math.abs(p.hue) / 90);
-			const h = 250 + p.hue;
-			const soft = self(0.58, p.softness);
-			const layers = [
-				linear(rng.range(140, 200), [
-					`${withAlpha(tone(0.24, 0.012 * chromaScale, h), 0.8)} 0%`,
-					`${withAlpha(tone(0.13, 0.01 * chromaScale, h), 0.9)} 100%`
-				]),
-				radial({
-					x: rng.range(26, 74),
-					y: rng.range(16, 44),
-					rx: 70 * (0.7 + soft * 0.8),
-					ry: 52 * (0.7 + soft * 0.8),
-					color: tone(0.46, 0.012 * chromaScale, h),
-					alpha: 0.3,
-					fade: 100
-				}),
-				vignette(0.34, 38)
-			];
-			return { layers, base: tone(0.12, 0.01, h) };
-		}
-	},
-	{
-		id: "lumen",
-		name: { zh: "光晕", en: "Halo" },
-		scheme: "dark",
-		tags: ["focus", "glow"],
-		defaultSoftness: 0.6,
-		defaultGrain: 0.18,
-		complexity: 0.36,
-		build(p, rng) {
-			const h = 222 + p.hue;
-			const soft = self(0.6, p.softness);
-			const layers = [
-				radial({
-					x: rng.range(34, 66),
-					y: rng.range(14, 34),
-					rx: (42 + soft * 30) * rng.range(0.88, 1.12),
-					ry: (30 + soft * 22) * rng.range(0.88, 1.12),
-					color: tone(0.72, 0.09, h + 6),
-					alpha: 0.66,
-					fade: 100
-				}),
-				radial({
-					x: rng.range(28, 72),
-					y: rng.range(46, 76),
-					rx: 80 * (0.7 + soft * 0.7),
-					ry: 44 * (0.7 + soft * 0.7),
-					color: tone(0.4, 0.08, h - 30),
-					alpha: 0.3,
-					fade: 100
-				}),
-				vignette(0.5 + soft * 0.12, 20)
-			];
-			return { layers, base: tone(0.11, 0.026, h) };
-		}
-	},
-	{
-		id: "ivory",
-		name: { zh: "象牙", en: "Ivory" },
-		scheme: "light",
-		tags: ["warm", "paper"],
-		defaultSoftness: 0.64,
-		defaultGrain: 0.3,
-		complexity: 0.22,
-		build(p, rng) {
-			const h = 76 + p.hue;
-			const soft = self(0.64, p.softness);
-			const layers = [
-				linear(rng.range(120, 190), [
-					`${withAlpha(tone(0.94, 0.022, h), 0.9)} 0%`,
-					`${withAlpha(tone(0.88, 0.03, h - 14), 0.85)} 100%`
-				]),
-				radial({
-					x: rng.range(18, 44),
-					y: rng.range(14, 40),
-					rx: 66 * (0.7 + soft * 0.8),
-					ry: 50 * (0.7 + soft * 0.8),
-					color: tone(0.99, 0.014, h + 6),
-					alpha: 0.66,
-					fade: 100
-				}),
-				radial({
-					x: rng.range(56, 88),
-					y: rng.range(58, 88),
-					rx: 58 * (0.7 + soft * 0.8),
-					ry: 44 * (0.7 + soft * 0.8),
-					color: tone(0.83, 0.035, h - 26),
-					alpha: 0.4,
-					fade: 100
-				}),
-				halo(0.3 + soft * 0.2, 40)
-			];
-			return { layers, base: tone(0.93, 0.024, h - 8) };
-		}
-	},
-	{
 		id: "mist",
 		name: { zh: "晨雾", en: "Mist" },
 		scheme: "light",
@@ -503,7 +325,7 @@ const RECIPES = [
 			const soft = self(0.5, p.softness);
 			// Intentionally almost featureless: the grain overlay does the work,
 			// and this recipe is what "just give me a neutral warm backdrop"
-			// means. Its complexity is the lowest of the twelve for that reason.
+			// means. Its complexity is the lowest of the set for that reason.
 			const layers = [
 				linear(rng.range(120, 200), [
 					`${withAlpha(tone(0.95, 0.016 * chromaScale, h), 0.9)} 0%`,

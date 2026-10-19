@@ -47,6 +47,27 @@ const ITEM_KINDS = ["recipe", "image", "url", "gradient"];
 /** Wash opacity bounds — below 0.2 the chrome stops occluding anything. */
 const OPACITY_MIN = 0.2;
 const OPACITY_MAX = 0.98;
+/**
+ * The veil opacity 1.0.x shipped as its default.
+ *
+ * Kept as a named constant rather than a literal in the migration because it is
+ * history, not a tuning value: it exists so the migration has something exact to
+ * recognise, and so removing it later is a visible decision rather than a silent
+ * one.
+ */
+const LEGACY_WASH_OPACITY = 0.5;
+/**
+ * The same bounds expressed the way the panel presents them: how much of the
+ * picture is on screen. `wash.opacity` is the veil, so these are its complements
+ * — derived rather than written out twice, because two constants that have to
+ * add up to 1 are two constants that eventually do not.
+ *
+ * Rounded because `1 - 0.98` is `0.020000000000000018` in binary floating point,
+ * and a slider whose minimum is that shows up as a step grid offset from the
+ * numbers it prints.
+ */
+const VISIBILITY_MIN = Math.round((1 - OPACITY_MAX) * 100) / 100;
+const VISIBILITY_MAX = Math.round((1 - OPACITY_MIN) * 100) / 100;
 /** Blur bounds, px. Past 60 the picture is a colour field, not a picture. */
 const BLUR_MIN = 0;
 const BLUR_MAX = 60;
@@ -91,7 +112,14 @@ const DEFAULT_STATE = Object.freeze({
 	 *  "is there a rotation configured at all" — pausing must not lose it. */
 	paused: false,
 	wash: Object.freeze({
-		opacity: 0.82,
+		// One veil, not a stack. 0.5 was the first guess and it read as "the page
+		// has a tint" rather than "there is a wallpaper": on a light theme the
+		// veil is white, so 0.5 plus the automatic lift left the picture only 44%
+		// visible and the window looked washed out. 0.3 leaves roughly two thirds
+		// of the picture — enough that the change is legible at a glance — and
+		// the AA floor below still raises it per picture wherever text would
+		// genuinely suffer.
+		opacity: 0.3,
 		blur: 0,
 		fit: "cover",
 		position: "center",
@@ -181,12 +209,19 @@ const BACKGROUND_CSS_ALLOWED = /^[A-Za-z0-9#%.,()+\- ]+$/;
 function isSafeBackgroundImage(value) {
 	if (typeof value !== "string") return false;
 	const text = value.trim();
-	if (text.length === 0 || text.length > MAX_BACKGROUND_CSS_CHARS) return false;
+	if (text.length === 0) return false;
 	if (/^url\(/i.test(text)) {
 		const match = text.match(/^url\("([^"]*)"\)$/);
 		if (match === null) return false;
+		// The payload validator owns the length limit in this branch, and it has
+		// to: a photograph is legitimately far bigger than any sane gradient
+		// stack, and the 64KB ceiling below was cutting real wallpapers off.
+		// That is not a theoretical edge — a 2560px JPEG is ~120KB of base64,
+		// which the shipped build refused with "unsafe background-image" and the
+		// engine then painted nothing at all.
 		return isSafeDataImage(match[1]) || isSafeWallpaperUrl(match[1]);
 	}
+	if (text.length > MAX_BACKGROUND_CSS_CHARS) return false;
 	if (!/^(linear|radial|conic)-gradient\(/i.test(text)) return false;
 	if (!text.endsWith(")")) return false;
 	if (!BACKGROUND_CSS_ALLOWED.test(text)) return false;
@@ -333,6 +368,20 @@ function normalizeState(input) {
 				.map((v) => Math.floor(Number(v)))
 				.filter((v) => Number.isInteger(v) && v >= 0 && v < playlist.length)
 		: [];
+	const wash = normalizeWash(raw.wash);
+	const washTouched = raw.washTouched === true;
+	// A NEW DEFAULT HAS TO REACH THE PEOPLE WHO ALREADY HAVE THE OLD ONE.
+	//
+	// Changing `DEFAULT_STATE.wash.opacity` only helps a fresh install: anyone
+	// who ran 1.0.x already carries 0.5 in their saved state, and normalizing
+	// would faithfully keep painting the washed-out veil they are complaining
+	// about. So the old default is treated as "never chose anything" — but only
+	// that exact value, and only for a user who has never moved a wash slider,
+	// which is what `washTouched` records. A number somebody picked on purpose
+	// is never rewritten.
+	if (washTouched === false && raw.wash && raw.wash.opacity === LEGACY_WASH_OPACITY) {
+		wash.opacity = DEFAULT_STATE.wash.opacity;
+	}
 	return {
 		mode: raw.mode === "rotation" && playlist.length > 0 ? "rotation" : "single",
 		single,
@@ -343,10 +392,10 @@ function normalizeState(input) {
 		orderStep: Math.max(0, Math.floor(finiteOr(raw.orderStep, 0))),
 		nextAt: Math.max(0, finiteOr(raw.nextAt, 0)),
 		paused: raw.paused === true,
-		wash: normalizeWash(raw.wash),
+		wash,
 		tuning: normalizeTuning(raw.tuning),
 		schedule: normalizeSchedule(raw.schedule),
-		washTouched: raw.washTouched === true
+		washTouched
 	};
 }
 
@@ -527,9 +576,12 @@ module.exports = {
 	DOC_KEYS,
 	MAX_PLAYLIST,
 	MAX_IMAGE_CHARS,
+	MAX_BACKGROUND_CSS_CHARS,
 	MAX_GRADIENT_CHARS,
 	OPACITY_MIN,
 	OPACITY_MAX,
+	VISIBILITY_MIN,
+	VISIBILITY_MAX,
 	BLUR_MIN,
 	BLUR_MAX,
 	FIT_MODES,

@@ -244,7 +244,27 @@ const PING = JSON.stringify({ method: "ping" });
 test("the host half declares the services it needs to mount", async () => {
 	const host = await freshHost();
 	assert.equal(host.name, "dsh-lumen");
-	assert.deepEqual(host.inject, ["webServer", "webRuntime"]);
+	assert.deepEqual(host.inject, ["webServer"]);
+});
+
+/**
+ * The bug this test exists for, in one sentence: `inject` is a list of services
+ * the fiber will WAIT for, and this cordis build has no optional form — an entry
+ * nothing provides leaves `apply` un-called forever, silently.
+ *
+ * `webRuntime` was on that list and no shipped DSH build provides a service by
+ * that name. The host half therefore never mounted: `/lumen/api` answered `404`
+ * instead of the `401` a mounted route gives, state quietly fell back to
+ * `localStorage`, and a splash could never be uploaded — "开屏不能用" with no
+ * error anywhere to explain it.
+ */
+test("nothing is demanded that the host does not provide", async () => {
+	const host = await freshHost();
+	const provided = ["webServer", "connection", "credentials"];
+	for (const name of host.inject) {
+		assert.ok(provided.includes(name), `${name} is demanded but no shipped host provides it, so apply() would never run`);
+	}
+	assert.ok(!host.inject.includes("webRuntime"), "webRuntime does not exist in any shipped build; demanding it disables the whole host half");
 });
 
 test("connection is probed rather than required, so a build without it still mounts", async () => {
@@ -259,6 +279,90 @@ test("it mounts both fenced prefix routes, and the fence is not optional", async
 		assert.equal(typeof route.handler, "function");
 	}
 	assert.deepEqual(mounted.labels, ["dsh-lumen: persistence API route", "dsh-lumen: splash routes"]);
+});
+
+// ── mounting against a service that is not there yet ──────────────────────
+
+/**
+ * A context shaped like the real one: reading `webServer` before the service is
+ * composed THROWS (cordis refuses a property it was not asked to inject), and
+ * `inject` is the only way to ask for it.
+ *
+ * The old double could not express this — it had `webServer` sitting on the
+ * context from the start — which is exactly why the suite stayed green while
+ * every host-side feature was dead on a real installation.
+ */
+function makeDeferredContext() {
+	const routes = [];
+	const labels = [];
+	let release = null;
+	const sub = {
+		effect: (fn, label) => {
+			labels.push(label);
+			return fn();
+		},
+		webServer: {
+			register: (route) => {
+				routes.push(route);
+				return () => {};
+			}
+		}
+	};
+	const ctx = {
+		effect: (fn, label) => {
+			labels.push(label);
+			return fn();
+		},
+		on: () => () => {},
+		inject: (names, callback) => {
+			assert.deepEqual(names, ["webServer"], "the plugin must ask for the service rather than grab it");
+			release = () => callback(sub);
+			return () => {};
+		}
+	};
+	Object.defineProperty(ctx, "webServer", {
+		get() {
+			throw new Error('cannot get property "webServer" without inject');
+		}
+	});
+	return { ctx, routes, labels, release: () => release !== null && release(), asked: () => release !== null };
+}
+
+test("apply never touches a service it has not asked for, and mounts once it answers", async () => {
+	const host = await freshHost();
+	const deferred = makeDeferredContext();
+	assert.doesNotThrow(() => host.apply(deferred.ctx), "a context whose webServer is not composed yet must not be fatal");
+	assert.ok(deferred.asked(), "the plugin never asked for the web server");
+	assert.equal(deferred.routes.length, 0, "a route was mounted before the service existed");
+	deferred.release();
+	assert.equal(deferred.routes.length, 2, "the routes did not mount when the web server arrived");
+	assert.deepEqual(deferred.labels, ["dsh-lumen: persistence API route", "dsh-lumen: splash routes"]);
+});
+
+test("the index-inject listener is registered before anything that can fail", async () => {
+	// A throw from `apply` fails the whole fiber, which disposes the listeners
+	// registered before it — so the cover injection has to be the first thing
+	// that happens, not the last.
+	const host = await freshHost();
+	const order = [];
+	const ctx = {
+		effect: (fn, label) => {
+			order.push(`effect:${label}`);
+			return fn();
+		},
+		on: (event) => {
+			order.push(`on:${event}`);
+			return () => {};
+		},
+		inject: () => {
+			order.push("inject:webServer");
+			return () => {};
+		}
+	};
+	try {
+		host.apply(ctx);
+	} catch {}
+	assert.equal(order[0], "on:webserver/index-inject", "the injection handler was not the first registration");
 });
 
 // ── layer one: this plugin's own Host/Origin validator ─────────────────────

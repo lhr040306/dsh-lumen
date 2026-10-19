@@ -149,9 +149,21 @@ function byClass(document, fragment) {
 }
 
 /** The alpha the page is actually painting for the canvas token. */
-function washAlpha(ctx) {
-	const value = ctx.theme.visibleTokens()["--dsw-alias-bg-base"];
-	const match = String(value).match(/^rgba\(([^)]+)\)$/);
+/**
+ * The alpha the plugin is actually painting with.
+ *
+ * It used to be readable from the override token, because the wash wrote
+ * `rgba(...)` into `--dsw-alias-bg-base`. It now paints one translucent layer
+ * of its own (`data-dsh-lumen="veil"`) and hands the shell transparent
+ * surfaces — the token route compounded across nested surfaces and hid the
+ * wallpaper — so the veil is where the number lives.
+ */
+function washAlpha(realm) {
+	const doc = realm && realm.document ? realm.document : null;
+	if (!doc) return 1;
+	const veil = doc.documentElement.queryAll((el) => el.getAttribute("data-dsh-lumen") === "veil")[0];
+	if (!veil) return 1;
+	const match = String(veil.style.backgroundColor).match(/^rgba?\(([^)]+)\)$/);
 	if (match === null) return 1;
 	const parts = match[1].split(",").map((part) => Number(part.trim()));
 	return parts.length === 4 ? parts[3] : 1;
@@ -265,7 +277,7 @@ test("the panel renders in English when the shell is English, and only in Englis
 // ── the token surface, which is the plugin's main safety claim ──────────────
 
 test("the plugin overrides exactly one layer and exactly two tokens", async () => {
-	const { ctx, api } = await bootWithPanel();
+	const { realm, ctx, api } = await bootWithPanel();
 	const theme = ctx.theme;
 
 	assert.deepEqual(Array.from(theme.overrideSources()), ["dsh-lumen:wash"], "the plugin published an unexpected override layer");
@@ -275,9 +287,12 @@ test("the plugin overrides exactly one layer and exactly two tokens", async () =
 	const changed = Object.keys(visible).filter((name) => raw[name] !== visible[name]).sort();
 	assert.deepEqual(changed, ["--dsw-alias-bg-base", "--dsw-specific-sidebar-fill"]);
 
-	// Composed, not replaced: the canvas colour is the theme's own colour with an
-	// alpha, which is why the wallpaper shows through at all.
-	assert.ok(String(visible["--dsw-alias-bg-base"]).indexOf("rgba(") === 0, `the wash is not translucent: ${visible["--dsw-alias-bg-base"]}`);
+	// The two surfaces are handed over transparent, and the tint lives on the
+	// plugin's own layer. Composing the alpha into the token is what stacked up
+	// across the shell's nested surfaces and swallowed the wallpaper.
+	assert.equal(String(visible["--dsw-alias-bg-base"]), "transparent", `the canvas was not handed over: ${visible["--dsw-alias-bg-base"]}`);
+	assert.equal(String(visible["--dsw-specific-sidebar-fill"]), "transparent");
+	assert.ok(washAlpha(realm) < 1, "the plugin painted no veil, so nothing dims the picture");
 	assert.ok(Object.keys(visible).length > 25, "the shell published too few tokens for this check to mean anything");
 
 	api.__unmount();
@@ -307,7 +322,7 @@ test("the readability floor raises the wash, never lowers it, and can be switche
 
 	const required = engine.inspect().requiredAlpha;
 	assert.ok(required > lightest, `the floor did not engage over a bright backdrop: required=${required}`);
-	const floored = washAlpha(ctx);
+	const floored = washAlpha(realm);
 	assert.ok(Math.abs(floored - required) < 0.005, `the painted alpha ${floored} does not match the reported floor ${required}`);
 
 	// With the floor off, the user's value is the only input — the panel says so,
@@ -319,8 +334,8 @@ test("the readability floor raises the wash, never lowers it, and can be switche
 	engine.render(true);
 	assert.equal(engine.inspect().requiredAlpha, 0);
 	assert.ok(
-		Math.abs(washAlpha(ctx) - lightest) < 0.005,
-		`with the floor off the user's value should be honoured exactly, got ${washAlpha(ctx)}`
+		Math.abs(washAlpha(realm) - lightest) < 0.005,
+		`with the floor off the user's value should be honoured exactly, got ${washAlpha(realm)}`
 	);
 
 	// And a user value above the floor wins: a floor is a floor, not a target.
@@ -330,7 +345,7 @@ test("the readability floor raises the wash, never lowers it, and can be switche
 		return draft;
 	});
 	engine.render(true);
-	assert.ok(Math.abs(washAlpha(ctx) - 0.95) < 0.005, `the user's 95% was not honoured, got ${washAlpha(ctx)}`);
+	assert.ok(Math.abs(washAlpha(realm) - 0.95) < 0.005, `the user's 95% was not honoured, got ${washAlpha(realm)}`);
 
 	api.__unmount();
 	ctx.dispose();

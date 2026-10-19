@@ -13,7 +13,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { createEngine, itemToBackground, readRawTheme, ACTIVE_ATTR, STYLE_ID, CONTRAST_TARGET } = require("../src/engine.cjs");
+const { createEngine, itemToBackground, readRawTheme, readPaletteFromDom, ACTIVE_ATTR, STYLE_ID, CONTRAST_TARGET } = require("../src/engine.cjs");
 const { createStore } = require("../src/store.cjs");
 const { createDocument, createWindow, createStorage } = require("./helpers/minidom.cjs");
 const color = require("../src/color.cjs");
@@ -106,12 +106,18 @@ function layers(document, role) {
 	return document.documentElement.queryAll((el) => el.getAttribute(ACTIVE_ATTR) === role);
 }
 
-/** The alpha of a pushed wash token, or `null` when no wash was pushed. */
-function washAlpha(push, token) {
-	if (!push) return null;
-	const value = push.tokens[token];
-	if (!value) return null;
-	const parsed = color.parseColor(value.dark);
+/**
+ * The alpha the veil is actually painted at.
+ *
+ * The wash used to live in the theme tokens, so every test could read it from
+ * the pushed override. It now lives on one element (`data-dsh-lumen="veil"`) and
+ * the tokens are simply transparent — which is the whole point: translucency on
+ * several nested surfaces compounds, and that is what hid the wallpaper.
+ */
+function veilAlpha(document) {
+	const veil = layers(document, "veil")[0];
+	if (!veil) return null;
+	const parsed = color.parseColor(veil.style.backgroundColor);
 	return parsed === null ? null : parsed.a;
 }
 
@@ -165,6 +171,62 @@ test("readRawTheme follows the scheme and refuses an unusable snapshot", () => {
 	);
 });
 
+/**
+ * A window whose computed style answers like a browser's.
+ *
+ * This is the shape the real DSH page has, and the reason the plugin shipped
+ * broken: the built-in themes register `tokens: {}`, so the palette exists only
+ * as *resolved CSS* on the body. A test that only ever feeds tokens through the
+ * theme service cannot see that, which is how 1.0.0 passed 343 tests and showed
+ * no wallpaper.
+ */
+function createPaintedWindow(document, palette) {
+	const win = createWindow(document);
+	win.getComputedStyle = () => ({
+		backgroundColor: palette.background,
+		color: palette.label,
+		getPropertyValue: (name) =>
+			({ "--dsw-alias-label-primary": palette.label, "--dsw-specific-sidebar-fill": palette.sidebar }[name] || "")
+	});
+	return win;
+}
+
+test("the palette is read from the painted document when the theme table is empty", () => {
+	// The built-in light/dark pair ships `tokens: {}` — this is a faithful
+	// stand-in for that, not a contrived edge case.
+	const box = createDocument();
+	const win = createPaintedWindow(box, { background: "rgb(255, 255, 255)", label: "rgb(17, 17, 17)", sidebar: "rgb(244, 245, 247)" });
+	const palette = readPaletteFromDom(box, win);
+	assert.ok(palette !== null, "the document palette was not read");
+	assert.equal(color.formatColor(palette.base), "rgb(255, 255, 255)");
+	assert.equal(color.formatColor(palette.label), "rgb(17, 17, 17)");
+	assert.equal(color.formatColor(palette.sidebar), "rgb(244, 245, 247)");
+	assert.equal(palette.scheme, "light");
+	// No document (headless), or no computed style: not an error, just null.
+	assert.equal(readPaletteFromDom(null, win), null);
+	assert.equal(readPaletteFromDom(box, createWindow(box)), null);
+});
+
+test("a theme with empty tokens still gets a wash, so the wallpaper is visible", () => {
+	const box = createDocument();
+	const win = createPaintedWindow(box, { background: "rgb(255, 255, 255)", label: "rgb(17, 17, 17)", sidebar: "rgb(244, 245, 247)" });
+	const ctx = createCtx();
+	// Both built-in definitions lose their tokens, exactly like DSH's own pair.
+	for (const def of ctx.theme.defs) def.tokens = {};
+	const store = createStore({ apiPath: "/lumen/api", storage: createStorage(), fetchImpl: null });
+	const engine = createEngine({ ctx, store, document: box, window: win });
+
+	engine.start();
+
+	assert.ok(ctx.theme.pushes.length > 0, "no wash was published — the app would stay opaque and hide the wallpaper");
+	const push = ctx.theme.pushes[ctx.theme.pushes.length - 1];
+	const alpha = veilAlpha(box);
+	assert.ok(alpha !== null && alpha > 0 && alpha < 1, `the canvas was not made translucent (alpha ${alpha})`);
+	assert.equal(engine.inspect().washed, true, "the engine did not report a live wash");
+	engine.dispose();
+	assert.equal(engine.inspect().washed, false, "the wash outlived the engine");
+});
+
 test("start installs the layer stack in the order that keeps it behind the app", () => {
 	const env = makeEngine();
 	env.engine.start();
@@ -176,6 +238,7 @@ test("start installs the layer stack in the order that keeps it behind the app",
 	assert.equal(layers(document, "slot-0").length, 1);
 	assert.equal(layers(document, "slot-1").length, 1);
 	assert.equal(layers(document, "grain").length, 1);
+	assert.equal(layers(document, "veil").length, 1);
 
 	// Prepended, not appended: `z-index: -1` only puts it behind the shell if it
 	// is the first painted sibling of the app root.
@@ -184,7 +247,7 @@ test("start installs the layer stack in the order that keeps it behind the app",
 
 	const root = layers(document, "root")[0];
 	const roles = root.childNodes.map((child) => child.getAttribute(ACTIVE_ATTR));
-	assert.deepEqual(roles, ["bleed", "slot-0", "slot-1", "grain"]);
+	assert.deepEqual(roles, ["bleed", "slot-0", "slot-1", "veil", "grain"]);
 
 	env.engine.dispose();
 });
@@ -195,13 +258,18 @@ test("the wash overrides exactly two tokens and leaves the rest of the theme alo
 	assert.equal(env.theme.pushes.length, 1, "the wash should be pushed once on first paint");
 	const push = env.theme.pushes[0];
 	assert.deepEqual(Object.keys(push.tokens).sort(), ["--dsw-alias-bg-base", "--dsw-specific-sidebar-fill"]);
-	// The value must be the theme's own colour, translucented — not a new colour.
-	const washed = color.parseColor(push.tokens["--dsw-alias-bg-base"].dark);
+	// The surfaces are handed over *transparent*, and the tint lives on the veil.
+	// Putting the alpha in the token is what compounded across the shell's
+	// nested surfaces and left the wallpaper invisible behind them.
+	for (const name of ["--dsw-alias-bg-base", "--dsw-specific-sidebar-fill"]) {
+		assert.equal(push.tokens[name].dark, "transparent", `${name} was not handed over`);
+	}
+	const veil = color.parseColor(layers(env.document, "veil")[0].style.backgroundColor);
 	const base = color.parseColor(DARK_TOKENS["--dsw-alias-bg-base"]);
-	assert.equal(washed.r, base.r);
-	assert.equal(washed.g, base.g);
-	assert.equal(washed.b, base.b);
-	assert.ok(washed.a > 0 && washed.a < 1, "the wash must be translucent");
+	assert.equal(veil.r, base.r, "the veil is not the theme's own colour");
+	assert.equal(veil.g, base.g);
+	assert.equal(veil.b, base.b);
+	assert.ok(veil.a > 0 && veil.a < 1, "the veil must be translucent");
 	env.engine.dispose();
 });
 
@@ -212,7 +280,7 @@ test("the wash does not compound across repaints", () => {
 	// only becomes obvious after a long session of dragging sliders.
 	const env = makeEngine();
 	env.engine.start();
-	const first = washAlpha(env.theme.pushes[env.theme.pushes.length - 1], "--dsw-alias-bg-base");
+	const first = veilAlpha(env.document);
 	for (let i = 0; i < 12; i += 1) {
 		env.store.update((draft) => {
 			draft.tuning = { ...draft.tuning, hue: (i + 1) * 7 };
@@ -220,7 +288,7 @@ test("the wash does not compound across repaints", () => {
 		});
 		env.engine.render();
 	}
-	const last = washAlpha(env.theme.pushes[env.theme.pushes.length - 1], "--dsw-alias-bg-base");
+	const last = veilAlpha(env.document);
 	assert.equal(last, first, `the wash drifted from ${first} to ${last} over 12 repaints`);
 	env.engine.dispose();
 });
@@ -245,7 +313,7 @@ test("a new picture cross-fades, a tuning change does not", () => {
 
 	// A different picture does cross-fade, onto the other slot.
 	env.store.update((draft) => {
-		draft.single = { ...draft.single, ref: "ember" };
+		draft.single = { ...draft.single, ref: "dune" };
 		return draft;
 	});
 	env.engine.render();
@@ -258,8 +326,8 @@ test("a rotation step cross-fades and advances the cursor", () => {
 	env.store.update((draft) => {
 		draft.playlist = [
 			{ id: "r1", kind: "recipe", ref: "aurora", seed: "s1" },
-			{ id: "r2", kind: "recipe", ref: "ember", seed: "s2" },
-			{ id: "r3", kind: "recipe", ref: "abyss", seed: "s3" }
+			{ id: "r2", kind: "recipe", ref: "dune", seed: "s2" },
+			{ id: "r3", kind: "recipe", ref: "aurora", seed: "s3" }
 		];
 		draft.mode = "rotation";
 		draft.schedule = { ...draft.schedule, order: "sequential" };
@@ -297,12 +365,12 @@ test("the readability floor raises the wash over a bright picture and is reporte
 	const env = makeEngine();
 	// A light recipe behind a dark theme, with the user asking for a thin wash.
 	env.store.update((draft) => {
-		draft.single = { ...draft.single, kind: "recipe", ref: "ivory" };
+		draft.single = { ...draft.single, kind: "recipe", ref: "paper" };
 		draft.wash = { ...draft.wash, opacity: 0.2, autoDim: false, readability: true };
 		return draft;
 	});
 	env.engine.start();
-	const pushed = washAlpha(env.theme.pushes[env.theme.pushes.length - 1], "--dsw-alias-bg-base");
+	const pushed = veilAlpha(env.document);
 	assert.ok(pushed > 0.2, `a bright picture was washed at only ${pushed}`);
 	assert.ok(env.engine.inspect().requiredAlpha > 0.2, "the raised requirement was not reported for the panel");
 	env.engine.dispose();
@@ -311,12 +379,12 @@ test("the readability floor raises the wash over a bright picture and is reporte
 test("turning the readability floor off honours the user's alpha exactly", () => {
 	const env = makeEngine();
 	env.store.update((draft) => {
-		draft.single = { ...draft.single, kind: "recipe", ref: "ivory" };
+		draft.single = { ...draft.single, kind: "recipe", ref: "paper" };
 		draft.wash = { ...draft.wash, opacity: 0.2, autoDim: false, readability: false };
 		return draft;
 	});
 	env.engine.start();
-	assert.equal(washAlpha(env.theme.pushes[env.theme.pushes.length - 1], "--dsw-alias-bg-base"), 0.2);
+	assert.equal(veilAlpha(env.document), 0.2);
 	assert.equal(env.engine.inspect().requiredAlpha, 0);
 	env.engine.dispose();
 });
@@ -329,14 +397,14 @@ test("autoDim lifts the wash on a busier picture", () => {
 		return draft;
 	});
 	env.engine.start();
-	const plain = washAlpha(env.theme.pushes[env.theme.pushes.length - 1], "--dsw-alias-bg-base");
+	const plain = veilAlpha(env.document);
 	env.store.update((draft) => {
-		draft.single = { ...draft.single, ref: "mono" }; // complexity 0.18
+		draft.single = { ...draft.single, ref: "paper" }; // complexity 0.18
 		return draft;
 	});
 	env.engine.render();
 	const busy = plain;
-	const calm = washAlpha(env.theme.pushes[env.theme.pushes.length - 1], "--dsw-alias-bg-base");
+	const calm = veilAlpha(env.document);
 	assert.ok(busy > calm, `the busier picture got the lighter wash (${busy} vs ${calm})`);
 	env.engine.dispose();
 });
@@ -385,9 +453,8 @@ test("a theme change repaints from the raw theme, without a transition", () => {
 	env.theme.setPreference("light-default");
 	env.ctx.emitThemeChange();
 	env.engine.render(true);
-	const push = env.theme.pushes[env.theme.pushes.length - 1];
-	const washed = color.parseColor(push.tokens["--dsw-alias-bg-base"].light);
-	assert.equal(washed.r, 255, "the wash did not follow the theme to light");
+	const washed = color.parseColor(layers(env.document, "veil")[0].style.backgroundColor);
+	assert.equal(washed.r, 255, "the veil did not follow the theme to light");
 	env.engine.dispose();
 });
 
@@ -462,7 +529,7 @@ test("a paused rotation does not advance on a timer", () => {
 	env.store.update((draft) => {
 		draft.playlist = [
 			{ id: "r1", kind: "recipe", ref: "aurora", seed: "s1" },
-			{ id: "r2", kind: "recipe", ref: "ember", seed: "s2" }
+			{ id: "r2", kind: "recipe", ref: "dune", seed: "s2" }
 		];
 		draft.mode = "rotation";
 		draft.paused = true;
@@ -546,7 +613,7 @@ test("a measured bright picture is washed harder than an unmeasured one", () => 
 			return draft;
 		});
 		env.engine.render(true);
-		return washAlpha(env.theme.pushes[env.theme.pushes.length - 1], "--dsw-alias-bg-base");
+		return veilAlpha(env.document);
 	};
 	const bright = washFor(0.98);
 	const dark = washFor(0.02);

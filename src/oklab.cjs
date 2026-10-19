@@ -14,7 +14,7 @@
  * So the ladder is built in a perceptual space and converted outward, which is
  * what makes "N stops brighter" a control we can hand to a user at all: the
  * same N reads as the same step in `ivory` as in `abyss`, so one slider has one
- * meaning across all twelve recipes.
+ * meaning across every built-in recipe.
  *
  * Everything here is pure: numbers in, numbers out, no DOM, no allocation
  * beyond the returned records. That is what makes the 12 recipes testable

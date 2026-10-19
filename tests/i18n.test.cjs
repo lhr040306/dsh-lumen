@@ -85,8 +85,8 @@ test("translation picks the language and substitutes parameters", () => {
 	const en = createTranslator("en-US");
 	assert.equal(zh("status.on"), "已启用");
 	assert.equal(en("status.on"), "on");
-	assert.equal(zh("appearance.raised", { n: 62 }), "已自动提升到 62% 以保证文字可读");
-	assert.equal(en("appearance.raised", { n: 62 }), "Raised to 62% to keep text readable");
+	assert.equal(zh("appearance.raised", { n: 62 }), "为保证文字可读，遮罩已自动加厚：壁纸可见约 62%");
+	assert.equal(en("appearance.raised", { n: 62 }), "Thickened to keep text readable: about 62% of the wallpaper shows");
 	assert.equal(zh("rotation.missed", { n: 3 }).indexOf("3") >= 0, true);
 });
 

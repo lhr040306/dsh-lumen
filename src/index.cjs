@@ -162,7 +162,10 @@ function apply(ctx) {
 						name: "settings.section",
 						id: SECTION_ID,
 						order: 30,
-						label: "壁纸 / Wallpaper",
+						// One name, in the user's language. "壁纸 / Wallpaper" was both
+						// languages at once in a column where every neighbour is a
+						// single word.
+						label: t("section.label"),
 						locale: NS,
 						children: { [ITEM_SLOT]: { kind: "list", scope: "root" } }
 					}, Section)

@@ -16,9 +16,9 @@ const { RECIPES, RECIPE_IDS, getRecipe, isRecipeId, renderRecipe, defaultGrainFo
 const { isSafeBackgroundImage } = require("../src/state.cjs");
 const { estimateImageLuminance, parseColor } = require("../src/color.cjs");
 
-test("the library ships exactly twelve distinct recipes", () => {
-	assert.equal(RECIPES.length, 12);
-	assert.equal(new Set(RECIPE_IDS).size, 12);
+test("the library ships exactly seven distinct recipes", () => {
+	assert.equal(RECIPES.length, 7);
+	assert.equal(new Set(RECIPE_IDS).size, 7);
 	for (const recipe of RECIPES) {
 		assert.ok(typeof recipe.id === "string" && /^[a-z]+$/.test(recipe.id), `odd id: ${recipe.id}`);
 		assert.ok(recipe.name && recipe.name.zh && recipe.name.en, `${recipe.id} is missing a bilingual name`);

@@ -17,7 +17,7 @@ const NS = "settings.lumen";
 
 const TABLE = {
 	"meta.title": ["Lumen · 流转壁纸", "Lumen · Wallpaper"],
-	"meta.description": ["程序化壁纸 + 轮播调度：12 套生成式壁纸，按间隔 / 整点 / 每日自动更换", "Procedural wallpapers with a rotation scheduler: 12 generated designs, changing on an interval, the hour, or daily"],
+	"meta.description": ["程序化壁纸 + 轮播调度：内置生成式壁纸，按间隔 / 整点 / 每日自动更换", "Procedural wallpapers with a rotation scheduler: generated designs, changing on an interval, the hour, or daily"],
 
 	"section.label": ["壁纸", "Wallpaper"],
 
@@ -43,6 +43,7 @@ const TABLE = {
 	"hero.add": ["加入播放列表", "Add to playlist"],
 	"hero.seed": ["种子", "Seed"],
 
+	"custom.source": ["来源", "Source"],
 	"custom.local": ["本地图片", "Local image"],
 	"custom.local.hint": ["拖入或选择，可多选；自动缩放压缩后保存，长边最多 2560px", "Drop or choose — multiple allowed. Auto-resized and compressed, long edge up to 2560px"],
 	"custom.choose": ["选择文件…", "Choose file…"],
@@ -67,9 +68,9 @@ const TABLE = {
 	"splash.oneAtATime": ["开屏一次只接受一个文件", "A splash takes one file at a time"],
 	"splash.uploading": ["正在上传开屏素材…", "Uploading the splash…"],
 	"splash.clearing": ["正在清除开屏…", "Clearing the splash…"],
-	"splash.stored": ["已设为开屏（{kb}KB）。开屏在文档生成时就已经写进页面了，所以重新加载后才会看到它", "Set as the splash ({kb}KB). The cover is written into the document as it is generated, so a reload is what will show it"],
-	"splash.storedBoth": ["已设为壁纸并设为开屏（{kb}KB）。重新加载后才能看到开屏", "Set as both the wallpaper and the splash ({kb}KB). A reload is what will show the splash"],
-	"splash.wallpaperFailed": ["已设为开屏（{kb}KB），但壁纸那半边没成。开屏重新加载后可见", "The splash is set ({kb}KB), but the wallpaper half did not take. The splash shows on reload"],
+	"splash.stored": ["已设为开屏（{kb}KB）。开屏只在 DSH 启动时注入页面，所以要完全退出并重启 DSH 才能看到它", "Set as the splash ({kb}KB). A splash is injected when DSH starts, so a full restart of DSH is what will show it"],
+	"splash.storedBoth": ["已设为壁纸并设为开屏（{kb}KB）。壁纸马上生效，开屏要完全重启 DSH 后可见", "Set as both the wallpaper and the splash ({kb}KB). The wallpaper is live now; the splash shows after a full restart of DSH"],
+	"splash.wallpaperFailed": ["已设为开屏（{kb}KB），但壁纸那半边没成。开屏要完全重启 DSH 后可见", "The splash is set ({kb}KB), but the wallpaper half did not take. The splash shows after a full restart of DSH"],
 	"splash.cleared": ["开屏已清除，素材已删除", "Splash cleared, and its file removed"],
 	"splash.nothingToClear": ["本来就没有设置开屏", "There was no splash to clear"],
 	"splash.unknown": ["宿主通道不可用，读不到开屏状态", "The host route is unavailable, so the splash state cannot be read"],
@@ -88,10 +89,15 @@ const TABLE = {
 	"rotation.playlist": ["播放列表", "Playlist"],
 	"rotation.add": ["添加当前壁纸", "Add current"],
 	"rotation.empty": ["播放列表还是空的 —— 先添加几张壁纸", "The playlist is empty — add a few wallpapers first"],
+	"rotation.seed": ["用内置壁纸填充", "Fill with built-ins"],
+	"rotation.seeded": [
+		"已加入 {n} 套内置壁纸并开始轮播；原来的壁纸还留着，关掉轮播就会回来",
+		"Added {n} built-in wallpapers and started rotating. Your previous wallpaper is kept — turn rotation off to get it back"
+	],
+	"rotation.advanced": ["高级设置", "Advanced"],
 	"rotation.trigger": ["触发方式", "Trigger"],
 	"rotation.interval": ["间隔", "Interval"],
-	"rotation.mode.interval": ["按间隔", "Interval"],
-	"rotation.mode.hourly": ["整点", "Hourly"],
+	"rotation.mode.interval": ["按间隔", "Interval"],	"rotation.mode.hourly": ["整点", "Hourly"],
 	"rotation.mode.daily": ["每日", "Daily"],
 	"rotation.mode.session": ["每次会话", "Per session"],
 	"rotation.hourly.hint": ["每到这些分钟更换", "Change at these minutes"],
@@ -113,9 +119,9 @@ const TABLE = {
 	"rotation.session.noClock": ["由页面可见性驱动，无固定时刻", "Driven by page visibility — no fixed time"],
 	"rotation.missed": ["机器休眠期间错过了 {n} 次，已跳过（只补一次）", "Missed {n} while asleep — skipped, advanced once"],
 
-	"appearance.opacity": ["遮罩不透明度", "Wash opacity"],
-	"appearance.opacity.hint": ["面板越透，壁纸越明显，文字越难读", "A thinner wash shows more wallpaper and less text contrast"],
-	"appearance.raised": ["已自动提升到 {n}% 以保证文字可读", "Raised to {n}% to keep text readable"],
+	"appearance.opacity": ["壁纸可见度", "Wallpaper visibility"],
+	"appearance.opacity.hint": ["越高壁纸越明显；文字可读性由下方的可读性守护兜底", "Higher shows more of the wallpaper; the readability floor below still caps it"],
+	"appearance.raised": ["为保证文字可读，遮罩已自动加厚：壁纸可见约 {n}%", "Thickened to keep text readable: about {n}% of the wallpaper shows"],
 	"appearance.blur": ["模糊", "Blur"],
 	"appearance.fit": ["填充", "Fit"],
 	"appearance.fit.cover": ["铺满", "Cover"],
@@ -155,6 +161,8 @@ const TABLE = {
 	"status.storage.local": ["仅浏览器", "Browser only"],
 	"status.reason": ["降级原因", "Degraded because"],
 	"status.dom": ["背景层", "Backdrop"],
+	"status.wash": ["画布透明", "Translucent canvas"],
+	"status.washBlocked": ["画布没有变透明 —— 壁纸被界面整块挡住，所以看起来没生效。主题通道不可用时会出现这一行", "The canvas was not made translucent, so the shell is covering the wallpaper. This line appears when the theme channel is unavailable"],
 	"status.motion": ["减弱动效", "Reduced motion"],
 	"status.regime": ["模式", "Mode"],
 	"status.regime.fixed": ["固定单张", "Fixed"],
@@ -176,6 +184,7 @@ const TABLE = {
 	"custom.importPartial": ["成功 {ok} 张，失败 {failed} 张", "{ok} imported, {failed} failed"],
 
 	"rotation.full": ["播放列表已满（{n}）", "Playlist is full ({n})"],
+	"toast.applied": ["已应用：{name}", "Applied: {name}"],
 	"rotation.unstorable": ["该条目无法保存", "This entry cannot be stored"],
 	"rotation.due": ["即将更换", "due now"],
 
