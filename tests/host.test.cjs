@@ -30,6 +30,7 @@ const { pathToFileURL } = require("node:url");
 const HOST_URL = pathToFileURL(path.join(__dirname, "..", "lib", "index.js")).href;
 const ROUTE_PATH = "/lumen/api";
 const SPLASH_PATH = "/lumen/splash";
+const WALLPAPER_PATH = "/lumen/wallpaper";
 const MEDIA_PATH = `${SPLASH_PATH}/media`;
 const UPLOAD_PATH = `${SPLASH_PATH}/upload`;
 const CLEAR_PATH = `${SPLASH_PATH}/clear`;
@@ -187,15 +188,17 @@ async function mount(options) {
 	} else {
 		host.apply(built.ctx);
 	}
-	assert.equal(built.routes.length, 2, "the host half must mount the persistence route and the splash route");
+	assert.equal(built.routes.length, 3, "the host half must mount the persistence route, the splash routes and the illustration route");
 	const byPath = new Map(built.routes.map((route) => [route.path, route]));
 	assert.ok(byPath.has(ROUTE_PATH), `no route at ${ROUTE_PATH}`);
 	assert.ok(byPath.has(SPLASH_PATH), `no route at ${SPLASH_PATH}`);
+	assert.ok(byPath.has(WALLPAPER_PATH), `no route at ${WALLPAPER_PATH}`);
 	return {
 		host,
 		routes: built.routes,
 		route: byPath.get(ROUTE_PATH),
 		splash: byPath.get(SPLASH_PATH),
+		wallpapers: byPath.get(WALLPAPER_PATH),
 		inject: built.injectHandlers,
 		labels: built.labels,
 		ctx: built.ctx
@@ -278,13 +281,13 @@ test("connection is probed rather than required, so a build without it still mou
 	assert.ok(!host.inject.includes("connection"), "demanding the host gate would turn a hardening into an outage");
 });
 
-test("it mounts both fenced prefix routes, and the fence is not optional", async () => {
+test("it mounts all three fenced prefix routes, and the fence is not optional", async () => {
 	const mounted = await mount({});
 	for (const route of mounted.routes) {
 		assert.equal(route.kind, "prefix");
 		assert.equal(typeof route.handler, "function");
 	}
-	assert.deepEqual(mounted.labels, ["dsh-lumen: persistence API route", "dsh-lumen: splash routes"]);
+	assert.deepEqual(mounted.labels, ["dsh-lumen: persistence API route", "dsh-lumen: splash routes", "dsh-lumen: bundled illustration route"]);
 });
 
 // ── mounting against a service that is not there yet ──────────────────────
@@ -341,8 +344,8 @@ test("apply never touches a service it has not asked for, and mounts once it ans
 	assert.ok(deferred.asked(), "the plugin never asked for the web server");
 	assert.equal(deferred.routes.length, 0, "a route was mounted before the service existed");
 	deferred.release();
-	assert.equal(deferred.routes.length, 2, "the routes did not mount when the web server arrived");
-	assert.deepEqual(deferred.labels, ["dsh-lumen: persistence API route", "dsh-lumen: splash routes"]);
+	assert.equal(deferred.routes.length, 3, "the routes did not mount when the web server arrived");
+	assert.deepEqual(deferred.labels, ["dsh-lumen: persistence API route", "dsh-lumen: splash routes", "dsh-lumen: bundled illustration route"]);
 });
 
 test("the index-inject listener is registered before anything that can fail", async () => {
@@ -927,6 +930,64 @@ test("an unknown splash path is 404, and the wrong method is 405", async () => {
 		assert.equal((await callHost(splash, makeRequest({ url: `${SPLASH_PATH}/nope`, method: "GET" }))).status, 404);
 		assert.equal((await callHost(splash, makeRequest({ url: UPLOAD_PATH, method: "GET" }))).status, 405);
 		assert.equal((await callHost(splash, makeRequest({ url: CLEAR_PATH, method: "GET" }))).status, 405);
+	});
+});
+
+// ── the bundled illustrations ─────────────────────────────────────────────
+//
+// The four drawings are the only pixels this package ships. They are served
+// rather than inlined (a 300KB JPEG is ~400KB of base64, against a 512KB bundle
+// budget), which makes this route the one thing standing between a built-in
+// wallpaper and a 404 — so it gets the same treatment as the splash media route:
+// exact bytes, revalidating etag, and a name allowlist that is the directory
+// rather than a copy of a list.
+
+test("the illustration route serves a bundled picture byte-for-byte", async () => {
+	await withTempHome(async () => {
+		const { wallpapers } = await mount({});
+		const file = path.join(__dirname, "..", "media", "wallpapers", "whale-sunset.jpg");
+		const bytes = fs.statSync(file).size;
+
+		const res = await callHost(wallpapers, makeRequest({ url: `${WALLPAPER_PATH}/whale-sunset.jpg`, method: "GET" }));
+		assert.equal(res.status, 200);
+		assert.equal(res.headers["content-type"], "image/jpeg");
+		assert.equal(res.headers["content-length"], String(bytes));
+		assert.equal(res.headers["cache-control"], "no-cache", "a long max-age would outlive the version that filled it");
+		assert.ok(res.headers.etag, "no validator means no way to notice a changed picture");
+		assert.equal(res.bytes.length, bytes, "the body is not the file");
+
+		const head = await callHost(wallpapers, makeRequest({ url: `${WALLPAPER_PATH}/whale-sunset.jpg`, method: "HEAD" }));
+		assert.equal(head.status, 200);
+		assert.equal(head.headers["content-length"], String(bytes));
+		assert.equal(head.bytes.length, 0, "HEAD must not send a body");
+
+		const cached = await callHost(
+			wallpapers,
+			makeRequest({ url: `${WALLPAPER_PATH}/whale-sunset.jpg`, method: "GET", headers: { "if-none-match": res.headers.etag } })
+		);
+		assert.equal(cached.status, 304);
+		assert.equal(cached.bytes.length, 0);
+	});
+});
+
+test("the illustration route refuses every name the package does not ship", async () => {
+	await withTempHome(async () => {
+		const { wallpapers } = await mount({});
+		const refused = [
+			`${WALLPAPER_PATH}/../package.json`,
+			`${WALLPAPER_PATH}/..%2fpackage.json`,
+			`${WALLPAPER_PATH}/whale-sunset.jpg/extra`,
+			`${WALLPAPER_PATH}/WHALE-SUNSET.jpg`,
+			`${WALLPAPER_PATH}/whale-sunset.svg`,
+			WALLPAPER_PATH,
+			`${WALLPAPER_PATH}/`
+		];
+		for (const url of refused) {
+			const res = await callHost(wallpapers, makeRequest({ url, method: "GET" }));
+			assert.equal(res.status, 404, `${url} should not be served`);
+		}
+		const wrongMethod = await callHost(wallpapers, makeRequest({ url: `${WALLPAPER_PATH}/whale-sunset.jpg`, method: "POST" }));
+		assert.equal(wrongMethod.status, 405);
 	});
 });
 

@@ -1,30 +1,37 @@
 "use strict";
 /**
- * The built-in wallpaper library — five recipes, zero image assets.
+ * The built-in wallpaper library — two families behind one id.
  *
- * WHY GENERATED INSTEAD OF SHIPPED PICTURES
+ * FAMILY ONE, AND WHY IT EXISTS AT ALL: `drift` and `mist` are recipes, not
+ * pictures. A recipe is a pure function `(seed, hue, softness, grain) -> CSS`:
+ * same inputs, same picture, forever — which is what lets the tests pin the
+ * output, lets the "shake" button produce a genuine variation, and lets the
+ * rotation scheduler restore exactly the wallpaper it showed yesterday. A
+ * recipe also costs no bytes and carries no licence, which is why the generated
+ * family is the one that survives a package-size argument.
  *
- * The obvious way to ship "default wallpapers" is to bundle JPEGs. That has
- * three costs this project refuses to pay:
+ * FAMILY TWO: four illustrations the project's author drew for this package.
+ * They are the opposite of a recipe on every count — one picture each, a few
+ * hundred kilobytes each, no seed, no hue knob — and they are here because a
+ * generated light blob cannot be a character. What they deliberately do NOT do
+ * is grow the data model: a photo is still a `recipe`-kind item whose `ref` is
+ * the recipe's id, because the picker, the rotation scheduler, the wash solver
+ * and the persisted state all already work on a recipe id. `build()` returns a
+ * single `url()` layer instead of a gradient stack, and everything downstream
+ * treats it as one more built-in.
  *
- *   1. **Size.** A 2560x1440 photo is 300KB-1.5MB. Twelve of them is a
- *      double-digit-megabyte package, for assets a user will look at and
- *      probably replace.
- *   2. **Licensing.** Every bundled picture needs a licence, an attribution
- *      file, and a re-check on every release. Recipes need none.
- *   3. **Fixedness.** A JPEG is one picture. A recipe is a *family*: the same
- *      recipe at a different seed is a recognisably related but genuinely
- *      different background, which is what makes the "shake" button and the
- *      rotation scheduler worth having. You cannot rotate through one photo.
+ * A PICTURE IS SERVED, NOT INLINED. A 300KB JPEG is ~400KB of base64, and this
+ * file is bundled into a browser payload with a 512KB budget — so the bytes stay
+ * in `media/wallpapers/` and the host half serves them under
+ * {@link WALLPAPER_URL_PREFIX}. The URL is relative and same-origin, so it
+ * survives the host's per-launch port and needs no CORS arrangement.
  *
- * A recipe is a pure function `(seed, hue, softness, grain) -> CSS`. Same
- * inputs, same picture, forever — which is what lets the tests pin the output
- * and lets the rotation scheduler restore exactly the wallpaper it showed
- * yesterday.
- *
- * COLOUR IS COMPUTED, NOT TYPED. Every stop comes out of OKLCH and is
- * gamut-mapped into sRGB by `oklab.cjs`, so "the light version of this recipe"
- * is a real perceptual relationship rather than a hand-tuned second palette.
+ * COLOUR OF THE GENERATED FAMILY IS COMPUTED, NOT TYPED. Every stop comes out of
+ * OKLCH and is gamut-mapped into sRGB by `oklab.cjs`, so "the light version of
+ * this recipe" is a real perceptual relationship rather than a hand-tuned second
+ * palette. A photo's brightness cannot be computed that way — it is measured
+ * once, offline, with the same definition `image.sampleLuminance` uses at import
+ * time, and carried on the recipe as `luminance` (see {@link photoRecipe}).
  */
 
 const { oklchToSrgb } = require("./oklab.cjs");
@@ -83,6 +90,53 @@ function tune(tuning) {
 	};
 }
 
+/** Where the host half serves the bundled illustrations from. */
+const WALLPAPER_URL_PREFIX = "/lumen/wallpaper";
+/**
+ * The only shape a bundled-illustration URL may have.
+ *
+ * Narrow on purpose, and narrower than the file system: this string is written
+ * into a `background-image` declaration, so it is validated by shape like every
+ * other value that reaches the DOM (`state.isSafeBackgroundImage`). No `..`, no
+ * query, no protocol — a relative path with a lowercase file name.
+ */
+const WALLPAPER_URL_SHAPE = /^\/lumen\/wallpaper\/[a-z0-9-]+\.(jpg|jpeg|png|webp)$/;
+
+/**
+ * A bundled illustration, declared in the same shape as a recipe.
+ *
+ * Sharing the shape is the whole point: the panel's chip row, the playlist, the
+ * scheduler and the state model all key off "a `recipe` item whose `ref` is a
+ * built-in id", and none of them has to learn about pictures. What differs is
+ * only the inside of `build()` — one `url()` layer instead of a gradient stack —
+ * plus two facts a photograph has and a recipe does not:
+ *
+ *   - `luminance`, measured on the shipped file with the same definition a
+ *     user's imported picture gets (64x64 area average, WCAG relative
+ *     luminance, 75th percentile). Without it the readability floor would solve
+ *     against the neutral constant for a picture whose brightness is a known
+ *     number, and the wash would be wrong in the expensive direction.
+ *   - `base`, the picture's own average colour, so the fallback painted while
+ *     the JPEG loads is the wallpaper's colour rather than a black flash.
+ */
+function photoRecipe(spec) {
+	return {
+		id: spec.id,
+		name: spec.name,
+		scheme: "dark",
+		tags: ["photo", ...spec.tags],
+		/** The file name inside `media/wallpapers/`. The host half serves it. */
+		photo: spec.file,
+		luminance: spec.luminance,
+		complexity: spec.complexity,
+		defaultSoftness: NEUTRAL_TUNING.softness,
+		defaultGrain: 0.2,
+		build() {
+			return { layers: [`url("${WALLPAPER_URL_PREFIX}/${spec.file}")`], base: spec.base };
+		}
+	};
+}
+
 const RECIPES = [
 	{
 		id: "drift",
@@ -114,90 +168,6 @@ const RECIPES = [
 			}
 			layers.push(vignette(0.34 + soft * 0.16, 34));
 			return { layers, base: tone(0.15, 0.028, h + 8) };
-		}
-	},
-	{
-		id: "aurora",
-		name: { zh: "极光", en: "Aurora" },
-		scheme: "dark",
-		tags: ["cool", "band"],
-		defaultSoftness: 0.72,
-		defaultGrain: 0.18,
-		complexity: 0.42,
-		build(p, rng) {
-			const h = 196 + p.hue;
-			const soft = self(0.72, p.softness);
-			const bands = 5;
-			const layers = [];
-			for (let i = 0; i < bands; i += 1) {
-				const angle = rng.range(96, 126);
-				const accent = h + i * rng.range(4, 13);
-				layers.push(
-					linear(angle, [
-						`${withAlpha(tone(0.5, 0.12, accent), 0)} 0%`,
-						`${withAlpha(tone(0.52, 0.14, accent + 12), rng.range(0.3, 0.56))} ${n(rng.range(28, 52))}%`,
-						`${withAlpha(tone(0.4, 0.11, accent + 28), 0)} ${n(rng.range(74, 96))}%`
-					])
-				);
-			}
-			layers.push(
-				radial({
-					x: rng.range(20, 80),
-					y: rng.range(8, 30),
-					rx: 70 * (0.7 + soft * 0.8),
-					ry: 40 * (0.7 + soft * 0.8),
-					color: tone(0.62, 0.1, h + 22),
-					alpha: 0.34,
-					fade: 100
-				})
-			);
-			layers.push(vignette(0.4 + soft * 0.12, 30));
-			return { layers, base: tone(0.13, 0.036, h - 12) };
-		}
-	},
-	{
-		id: "starfield",
-		name: { zh: "星野", en: "Starfield" },
-		scheme: "dark",
-		tags: ["night", "point"],
-		defaultSoftness: 0.3,
-		defaultGrain: 0.3,
-		complexity: 0.55,
-		build(p, rng) {
-			const h = 252 + p.hue;
-			const soft = self(0.3, p.softness);
-			const stars = 42;
-			const layers = [];
-			for (let i = 0; i < stars; i += 1) {
-				// A power curve, not a uniform draw: real star fields have a few
-				// bright points and many faint ones, and a uniform draw reads as
-				// evenly-spaced noise instead of a sky.
-				const magnitude = Math.pow(rng.float(), 2.4);
-				layers.push(
-					radial({
-						x: rng.range(0, 100),
-						y: rng.range(0, 100),
-						rx: rng.range(0.5, 1.9) * (0.6 + soft),
-						ry: rng.range(0.5, 1.9) * (0.6 + soft),
-						color: tone(0.86, 0.04, h + rng.range(-18, 18)),
-						alpha: 0.12 + magnitude * 0.78,
-						fade: 100
-					})
-				);
-			}
-			layers.push(
-				radial({
-					x: rng.range(30, 70),
-					y: rng.range(55, 80),
-					rx: 82 * (0.7 + soft * 0.6),
-					ry: 46 * (0.7 + soft * 0.6),
-					color: tone(0.42, 0.09, h + 34),
-					alpha: 0.34,
-					fade: 100
-				})
-			);
-			layers.push(vignette(0.46 + soft * 0.14, 22));
-			return { layers, base: tone(0.1, 0.03, h) };
 		}
 	},
 	{
@@ -234,44 +204,48 @@ const RECIPES = [
 			return { layers, base: tone(0.93, 0.018, h) };
 		}
 	},
-	{
-		id: "dune",
-		name: { zh: "沙丘", en: "Dune" },
-		scheme: "light",
-		tags: ["warm", "band"],
-		defaultSoftness: 0.5,
-		defaultGrain: 0.34,
-		complexity: 0.3,
-		build(p, rng) {
-			const h = 62 + p.hue;
-			const soft = self(0.5, p.softness);
-			const bands = 4;
-			const layers = [];
-			for (let i = 0; i < bands; i += 1) {
-				const offset = rng.range(-6, 26);
-				layers.push(
-					linear(rng.range(155, 205), [
-						`${withAlpha(tone(0.94 - i * 0.045, 0.03, h + offset), 0)} ${n(rng.range(0, 18))}%`,
-						`${withAlpha(tone(0.93 - i * 0.05, 0.034, h + offset), rng.range(0.44, 0.72))} ${n(rng.range(38, 62))}%`,
-						`${withAlpha(tone(0.86 - i * 0.05, 0.036, h + offset - 10), 0)} ${n(rng.range(78, 100))}%`
-					])
-				);
-			}
-			layers.push(
-				radial({
-					x: rng.range(24, 76),
-					y: rng.range(10, 34),
-					rx: 72 * (0.7 + soft * 0.7),
-					ry: 46 * (0.7 + soft * 0.7),
-					color: tone(0.99, 0.016, h + 16),
-					alpha: 0.5,
-					fade: 100
-				})
-			);
-			layers.push(halo(0.3, 40));
-			return { layers, base: tone(0.9, 0.036, h + 4) };
-		}
-	},
+	photoRecipe({
+		id: "whale-point-half",
+		name: { zh: "夜潮", en: "Night Tide" },
+		file: "whale-point-half.jpg",
+		tags: ["whale", "night"],
+		// Every luminance below is a measurement of the shipped file, not a
+		// guess: 64x64 area average, WCAG relative luminance, upper quartile —
+		// the definition `image.sampleLuminance` applies to an imported picture.
+		luminance: 0.132,
+		base: { r: 78, g: 96, b: 133 },
+		complexity: 0.55
+	}),
+	photoRecipe({
+		id: "whale-starlit",
+		name: { zh: "星海", en: "Starlit" },
+		file: "whale-starlit.jpg",
+		tags: ["whale", "night"],
+		luminance: 0.085,
+		base: { r: 39, g: 51, b: 78 },
+		complexity: 0.5
+	}),
+	photoRecipe({
+		id: "whale-sunset",
+		name: { zh: "黄昏", en: "Dusk" },
+		file: "whale-sunset.jpg",
+		tags: ["whale", "warm"],
+		// The brightest of the four, and the default on a fresh install — which
+		// is why its complexity is the highest: it is the one picture that most
+		// needs the automatic lift to keep text legible over the sky.
+		luminance: 0.245,
+		base: { r: 126, g: 110, b: 130 },
+		complexity: 0.6
+	}),
+	photoRecipe({
+		id: "whale-point-full",
+		name: { zh: "深蓝", en: "Deep Blue" },
+		file: "whale-point-full.jpg",
+		tags: ["whale", "blue"],
+		luminance: 0.133,
+		base: { r: 82, g: 103, b: 150 },
+		complexity: 0.55
+	})
 ];
 
 /**
@@ -297,11 +271,45 @@ function isRecipeId(id) {
 	return RECIPE_BY_ID.has(id);
 }
 
+/** True when `id` names a bundled illustration rather than a generated recipe. */
+function isPhotoId(id) {
+	const recipe = RECIPE_BY_ID.get(id);
+	return recipe !== undefined && typeof recipe.photo === "string";
+}
+
+/**
+ * Recipes that used to ship and no longer do, and what a stored reference to
+ * one should become.
+ *
+ * Without this a state written by an older build keeps a `ref` that no longer
+ * exists, and `normalizeItem` repairs every one of them to `RECIPES[0]` — three
+ * playlist entries that were deliberately different pictures all collapse onto
+ * the same one. The mapping is by *intent* (`starfield` was the night sky, so it
+ * becomes the night-sky illustration), not by array position.
+ */
+const RETIRED_RECIPE_IDS = new Map([
+	["aurora", "drift"],
+	["starfield", "whale-starlit"],
+	["dune", "mist"]
+]);
+
+/**
+ * The recipe id a stored value should mean, or `null` when nothing can be made
+ * of it. Unknown ids still land on the first recipe — "the entry means a
+ * built-in wallpaper" survives, which is the same repair `normalizeItem` has
+ * always done.
+ */
+function repairRecipeId(id) {
+	if (typeof id !== "string") return null;
+	if (RECIPE_BY_ID.has(id)) return id;
+	return RETIRED_RECIPE_IDS.get(id) || null;
+}
+
 /**
  * Render a recipe into the two CSS values the backdrop layer needs.
  *
  * @param {{recipeId?: string, seed?: string|number, tuning?: object}} input
- * @returns {{backgroundImage: string, backgroundColor: string, scheme: string, complexity: number, recipeId: string, seed: string}}
+ * @returns {{backgroundImage: string, backgroundColor: string, scheme: string, complexity: number, recipeId: string, seed: string, luminance: number|null, photo: boolean}}
  */
 function renderRecipe(input) {
 	const recipe = getRecipe(input && input.recipeId);
@@ -316,9 +324,15 @@ function renderRecipe(input) {
 		scheme: recipe.scheme,
 		complexity: recipe.complexity,
 		recipeId: recipe.id,
-		seed
+		seed,
+		// A generated recipe has no measured brightness — the engine estimates it
+		// from the gradient stack. A photograph does, and `null` here means
+		// exactly that: "not measured", the same meaning it has on a state item.
+		luminance: typeof recipe.luminance === "number" ? recipe.luminance : null,
+		photo: typeof recipe.photo === "string"
 	};
 }
+
 
 /** The default grain for a recipe (used to seed the grain slider per family). */
 function defaultGrainFor(recipeId) {
@@ -334,8 +348,13 @@ module.exports = {
 	RECIPES,
 	RECIPE_IDS,
 	NEUTRAL_TUNING,
+	WALLPAPER_URL_PREFIX,
+	WALLPAPER_URL_SHAPE,
+	RETIRED_RECIPE_IDS,
 	getRecipe,
 	isRecipeId,
+	isPhotoId,
+	repairRecipeId,
 	renderRecipe,
 	defaultGrainFor,
 	defaultSoftnessFor

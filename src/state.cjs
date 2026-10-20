@@ -25,7 +25,7 @@
  * and the wash are untouched.
  */
 
-const { isRecipeId, RECIPE_IDS } = require("./wallpapers.cjs");
+const { repairRecipeId, RECIPE_IDS, WALLPAPER_URL_SHAPE } = require("./wallpapers.cjs");
 const { normalizeSchedule } = require("./scheduler.cjs");
 
 /** Schema version of the persisted document. Bump only with a migration. */
@@ -100,7 +100,16 @@ const finiteOr = (v, fallback) => (Number.isFinite(Number(v)) ? Number(v) : fall
 
 const DEFAULT_STATE = Object.freeze({
 	mode: "single",
-	single: Object.freeze({ kind: "recipe", ref: "drift", seed: "default" }),
+	/**
+	 * The wallpaper a fresh install opens on: 黄昏, one of the four bundled
+	 * illustrations.
+	 *
+	 * Only a *fresh* install gets this. A document that already carries a
+	 * `single` entry keeps it — including one that still names a retired
+	 * recipe, which `normalizeItem` repairs to its surviving neighbour. The
+	 * default is a first impression, not a policy that overwrites a choice.
+	 */
+	single: Object.freeze({ kind: "recipe", ref: "whale-sunset", seed: "default" }),
 	playlist: Object.freeze([]),
 	cursor: 0,
 	remaining: Object.freeze([]),
@@ -198,8 +207,8 @@ const BACKGROUND_CSS_ALLOWED = /^[A-Za-z0-9#%.,()+\- ]+$/;
  * cost of being wrong is a CSS injection, and the cost of checking is a regex.
  * A generated value and a hostile one are told apart by shape:
  *
- *   - exactly one `url("…")` layer, whose payload must itself pass the data-URL
- *     or http(s) validator, or
+ *   - exactly one `url("…")` layer, whose payload must itself pass the data-URL,
+ *     http(s) or bundled-illustration validator, or
  *   - a `-gradient(` stack built only from the characters a gradient can
  *     contain, with balanced parentheses.
  *
@@ -219,7 +228,11 @@ function isSafeBackgroundImage(value) {
 		// That is not a theoretical edge — a 2560px JPEG is ~120KB of base64,
 		// which the shipped build refused with "unsafe background-image" and the
 		// engine then painted nothing at all.
-		return isSafeDataImage(match[1]) || isSafeWallpaperUrl(match[1]);
+		//
+		// The bundled illustrations take a third door: a same-origin relative
+		// path the host half serves. It is matched against a single narrow
+		// shape, so it can never become an arbitrary path.
+		return isSafeDataImage(match[1]) || isSafeWallpaperUrl(match[1]) || WALLPAPER_URL_SHAPE.test(match[1]);
 	}
 	if (text.length > MAX_BACKGROUND_CSS_CHARS) return false;
 	if (!/^(linear|radial|conic)-gradient\(/i.test(text)) return false;
@@ -279,10 +292,13 @@ function normalizeItem(input) {
 	if (kind === null) return null;
 	let ref = input.ref;
 	if (kind === "recipe") {
-		ref = isRecipeId(ref) ? ref : null;
-		// An unknown recipe id is repaired to the first recipe rather than
-		// dropped: the entry still means "a built-in wallpaper", and silently
-		// shrinking a playlist is worse than showing a substitute.
+		// A recipe id this build still ships means itself; one that was retired
+		// means the survivor that replaced it; anything else is repaired to the
+		// first recipe rather than dropped. `repairRecipeId` owns the middle case
+		// (see `wallpapers.RETIRED_RECIPE_IDS`) so a document written before the
+		// library was trimmed keeps its three distinct wallpapers instead of
+		// collapsing them all onto the same one.
+		ref = repairRecipeId(ref);
 		if (ref === null) ref = RECIPE_IDS[0];
 	} else if (kind === "image") {
 		ref = isSafeDataImage(ref) ? ref : null;

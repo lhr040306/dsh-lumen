@@ -125,7 +125,7 @@ export interface State {
 	washTouched: boolean;
 }
 
-/** A built-in wallpaper recipe's metadata. */
+/** A built-in wallpaper's metadata — a generated recipe or a bundled illustration. */
 export interface Recipe {
 	id: string;
 	name: { zh: string; en: string };
@@ -134,6 +134,10 @@ export interface Recipe {
 	tags: string[];
 	/** 0..1, how busy the picture is — drives the auto-dim wash lift. */
 	complexity: number;
+	/** File name inside `media/wallpapers/`. Present only on a bundled illustration. */
+	photo?: string;
+	/** Measured relative luminance 0..1. Present only on a bundled illustration. */
+	luminance?: number;
 }
 
 /** What the renderer needs to paint one recipe. */
@@ -144,6 +148,10 @@ export interface RenderedRecipe {
 	complexity: number;
 	recipeId: string;
 	seed: string;
+	/** `null` for a generated recipe — the engine estimates, the photo measured. */
+	luminance: number | null;
+	/** True when this built-in is a bundled illustration rather than a gradient. */
+	photo: boolean;
 }
 
 /** Why a wallpaper image was refused. */

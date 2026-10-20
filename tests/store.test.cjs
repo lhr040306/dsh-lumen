@@ -75,7 +75,7 @@ test("a change reaches the host file and survives a restart", async () => {
 	const first = makeStore(host, storage);
 	await first.load();
 	first.update((draft) => {
-		draft.single = { ...draft.single, kind: "recipe", ref: "dune", seed: "s7" };
+		draft.single = { ...draft.single, kind: "recipe", ref: "mist", seed: "s7" };
 		draft.wash = { ...draft.wash, opacity: 0.55, blur: 9 };
 		return draft;
 	});
@@ -88,7 +88,7 @@ test("a change reaches the host file and survives a restart", async () => {
 	// A restart on a different origin: same host file, a fresh (empty) localStorage.
 	const second = makeStore(host, createStorage());
 	const loaded = await second.load();
-	assert.equal(loaded.single.ref, "dune");
+	assert.equal(loaded.single.ref, "mist");
 	assert.equal(loaded.single.seed, "s7");
 	assert.equal(loaded.wash.opacity, 0.55);
 	assert.equal(loaded.wash.blur, 9);
@@ -133,7 +133,7 @@ test("a payload key the browser half no longer owns is still deleted", async () 
 	const payloadKeys = [...host.file.keys()].filter((key) => key.startsWith("blob:"));
 	assert.equal(payloadKeys.length, 1, "the new picture was never stored");
 	store.update((draft) => {
-		draft.single = { ...draft.single, kind: "recipe", ref: "dune", seed: "default" };
+		draft.single = { ...draft.single, kind: "recipe", ref: "mist", seed: "default" };
 		return draft;
 	});
 	await store.flush();
@@ -147,7 +147,7 @@ test("the local seed paints before the host answers, and is adopted when the hos
 	const first = makeStore(host, storage);
 	await first.load();
 	first.update((draft) => {
-		draft.single = { ...draft.single, ref: "aurora", seed: "seeded" };
+		draft.single = { ...draft.single, ref: "drift", seed: "seeded" };
 		return draft;
 	});
 	await first.flush();
@@ -157,7 +157,7 @@ test("the local seed paints before the host answers, and is adopted when the hos
 	const freshHost = createHostFile();
 	const second = makeStore(freshHost, storage);
 	const loaded = await second.load();
-	assert.equal(loaded.single.ref, "aurora", "the seed was not read");
+	assert.equal(loaded.single.ref, "drift", "the seed was not read");
 	// And the seed was pushed into the empty host file so the next launch is not empty.
 	await second.flush();
 	assert.ok(freshHost.file.has("single"), "the rescued seed never reached the empty host file");
@@ -205,7 +205,7 @@ test("two writers changing different keys do not clobber each other", async () =
 	await a.flush();
 	// `b` still holds the pre-change copy, but it only writes what it changed.
 	b.update((draft) => {
-		draft.single = { ...draft.single, ref: "dune" };
+		draft.single = { ...draft.single, ref: "mist" };
 		return draft;
 	});
 	await b.flush();
@@ -213,7 +213,7 @@ test("two writers changing different keys do not clobber each other", async () =
 	const c = makeStore(host, createStorage());
 	const merged = await c.load();
 	assert.equal(merged.wash.opacity, 0.42, "a's wash was lost");
-	assert.equal(merged.single.ref, "dune", "b's wallpaper was lost");
+	assert.equal(merged.single.ref, "mist", "b's wallpaper was lost");
 	a.dispose();
 	b.dispose();
 	c.dispose();
@@ -235,7 +235,7 @@ test("a missing host API degrades to browser-only instead of failing", async () 
 	assert.equal(health.hasStorage, true);
 	// Writes still work locally and must not throw.
 	store.update((draft) => {
-		draft.single = { ...draft.single, ref: "starfield" };
+		draft.single = { ...draft.single, ref: "whale-starlit" };
 		return draft;
 	});
 	await store.flush();
@@ -289,7 +289,7 @@ test("a storage that refuses writes does not break the store", async () => {
 	assert.equal(loaded.mode, "single");
 	assert.equal(store.getHealth().hasStorage, false, "an unusable storage must be reported as absent");
 	store.update((draft) => {
-		draft.single = { ...draft.single, ref: "dune" };
+		draft.single = { ...draft.single, ref: "mist" };
 		return draft;
 	});
 	await store.flush();
@@ -304,14 +304,14 @@ test("subscribers are notified on change and released on dispose", async () => {
 		calls += 1;
 	});
 	store.update((draft) => {
-		draft.single = { ...draft.single, ref: "aurora" };
+		draft.single = { ...draft.single, ref: "drift" };
 		return draft;
 	});
 	assert.ok(calls > 0, "a change did not notify");
 	unsubscribe();
 	const before = calls;
 	store.update((draft) => {
-		draft.single = { ...draft.single, ref: "aurora" };
+		draft.single = { ...draft.single, ref: "drift" };
 		return draft;
 	});
 	assert.equal(calls, before, "unsubscribe did not take effect");
@@ -329,7 +329,7 @@ test("a throwing subscriber does not stop the others", async () => {
 		reached = true;
 	});
 	store.update((draft) => {
-		draft.single = { ...draft.single, ref: "dune" };
+		draft.single = { ...draft.single, ref: "mist" };
 		return draft;
 	});
 	assert.equal(reached, true);

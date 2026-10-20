@@ -87,12 +87,12 @@ test("currentItem follows the mode", () => {
 	const rotating = state.normalizeState({
 		mode: "rotation",
 		cursor: 1,
-		playlist: [{ kind: "recipe", ref: "drift" }, { kind: "recipe", ref: "dune" }]
+		playlist: [{ kind: "recipe", ref: "drift" }, { kind: "recipe", ref: "mist" }]
 	});
-	assert.equal(state.currentItem(rotating).ref, "dune");
+	assert.equal(state.currentItem(rotating).ref, "mist");
 	// A rotation that lost its playlist mid-flight still shows something.
-	const orphaned = state.normalizeState({ mode: "rotation", playlist: [], single: { kind: "recipe", ref: "aurora" } });
-	assert.equal(state.currentItem(orphaned).ref, "aurora");
+	const orphaned = state.normalizeState({ mode: "rotation", playlist: [], single: { kind: "recipe", ref: "drift" } });
+	assert.equal(state.currentItem(orphaned).ref, "drift");
 });
 
 test("a wallpaper whose recipe no longer exists is repaired, not dropped", () => {
@@ -104,7 +104,7 @@ test("a wallpaper whose recipe no longer exists is repaired, not dropped", () =>
 	assert.equal(repaired.single.kind, "recipe");
 	assert.equal(repaired.single.ref, RECIPE_IDS[0]);
 	const list = state.normalizeState({
-		playlist: [{ kind: "recipe", ref: "paper" }, { kind: "recipe", ref: "dune" }]
+		playlist: [{ kind: "recipe", ref: "paper" }, { kind: "recipe", ref: "mist" }]
 	});
 	assert.equal(list.playlist.length, 2, "a retired recipe shrank the playlist");
 	assert.equal(list.playlist[0].ref, RECIPE_IDS[0]);
@@ -210,7 +210,7 @@ test("a store round-trip preserves the playlist and rehydrates payloads", () => 
 		mode: "rotation",
 		cursor: 1,
 		playlist: [
-			{ id: "a1", kind: "recipe", ref: "dune", seed: "s1" },
+			{ id: "a1", kind: "recipe", ref: "mist", seed: "s1" },
 			{ id: "b2", kind: "image", ref: TINY_PNG, seed: "default" },
 			{ id: "c3", kind: "gradient", ref: "linear-gradient(90deg, #000 0%, #fff 100%)", seed: "default" }
 		],
@@ -220,7 +220,7 @@ test("a store round-trip preserves the playlist and rehydrates payloads", () => 
 	assert.equal(restored.mode, "rotation");
 	assert.equal(restored.cursor, 1);
 	assert.equal(restored.playlist.length, 3);
-	assert.equal(restored.playlist[0].ref, "dune");
+	assert.equal(restored.playlist[0].ref, "mist");
 	assert.equal(restored.playlist[0].seed, "s1");
 	assert.equal(restored.playlist[1].ref, TINY_PNG, "the payload did not come back");
 	assert.equal(restored.playlist[2].ref, "linear-gradient(90deg, #000 0%, #fff 100%)");
@@ -293,7 +293,7 @@ test("the single-document layout written by an earlier build is still readable",
 			schema: 1,
 			mode: "rotation",
 			cursor: 1,
-			playlist: [{ id: "a1", kind: "recipe", ref: "dune", seed: "s1" }],
+			playlist: [{ id: "a1", kind: "recipe", ref: "mist", seed: "s1" }],
 			wash: { opacity: 0.6, blur: 3 },
 			tuning: { hue: 20 }
 		})
@@ -303,7 +303,7 @@ test("the single-document layout written by an earlier build is still readable",
 	// A one-entry playlist clamps the stored cursor back to 0.
 	assert.equal(out.cursor, 0);
 	assert.equal(out.playlist.length, 1);
-	assert.equal(out.playlist[0].ref, "dune");
+	assert.equal(out.playlist[0].ref, "mist");
 	assert.equal(out.wash.opacity, 0.6);
 	assert.equal(out.tuning.hue, 20);
 });

@@ -1,26 +1,44 @@
 "use strict";
 /**
- * The built-in recipes.
+ * The built-in wallpapers.
  *
- * These run on Node with no DOM, which is the point of the recipe layer being
- * pure functions: a wallpaper can be checked, diffed and regression-tested
- * without a browser. What is asserted is reproducibility, shape safety (the
- * string is going into a CSS declaration), and that the declared scheme matches
- * how the picture actually measures.
+ * Two families live behind one id: generated recipes (`drift`, `mist`) and four
+ * bundled illustrations. These run on Node with no DOM, which is the point of
+ * the recipe layer being pure functions: a wallpaper can be checked, diffed and
+ * regression-tested without a browser. What is asserted is reproducibility,
+ * shape safety (the string is going into a CSS declaration), and that the
+ * declared scheme matches how the picture actually measures.
  */
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { RECIPES, RECIPE_IDS, getRecipe, isRecipeId, renderRecipe, defaultGrainFor } = require("../src/wallpapers.cjs");
-const { isSafeBackgroundImage } = require("../src/state.cjs");
+const {
+	RECIPES,
+	RECIPE_IDS,
+	getRecipe,
+	isRecipeId,
+	isPhotoId,
+	repairRecipeId,
+	renderRecipe,
+	defaultGrainFor,
+	WALLPAPER_URL_PREFIX
+} = require("../src/wallpapers.cjs");
+const { isSafeBackgroundImage, DEFAULT_STATE, normalizeItem } = require("../src/state.cjs");
 const { estimateImageLuminance, parseColor } = require("../src/color.cjs");
 
-test("the library ships exactly five distinct recipes", () => {
-	assert.equal(RECIPES.length, 5);
-	assert.equal(new Set(RECIPE_IDS).size, 5);
+/** The generated half of the library — everything without a `photo` field. */
+const GENERATED = RECIPES.filter((recipe) => typeof recipe.photo !== "string");
+/** The bundled illustrations. */
+const PHOTOS = RECIPES.filter((recipe) => typeof recipe.photo === "string");
+
+test("the library ships six built-ins: two generated recipes and four illustrations", () => {
+	assert.equal(RECIPES.length, 6);
+	assert.equal(new Set(RECIPE_IDS).size, 6);
+	assert.equal(GENERATED.length, 2);
+	assert.equal(PHOTOS.length, 4);
 	for (const recipe of RECIPES) {
-		assert.ok(typeof recipe.id === "string" && /^[a-z]+$/.test(recipe.id), `odd id: ${recipe.id}`);
+		assert.ok(typeof recipe.id === "string" && /^[a-z]+(-[a-z]+)*$/.test(recipe.id), `odd id: ${recipe.id}`);
 		assert.ok(recipe.name && recipe.name.zh && recipe.name.en, `${recipe.id} is missing a bilingual name`);
 		assert.ok(recipe.scheme === "light" || recipe.scheme === "dark", `${recipe.id} has no scheme`);
 		assert.equal(typeof recipe.build, "function");
@@ -28,20 +46,20 @@ test("the library ships exactly five distinct recipes", () => {
 });
 
 test("both colour schemes are represented", () => {
-	// A library that is all one scheme is a library with one look. The bound is
-	// "neither scheme is the whole set, and neither is a sole outlier" rather
-	// than a fixed number, so trimming the library does not force a rewrite.
-	const light = RECIPES.filter((r) => r.scheme === "light").length;
-	assert.ok(light >= 2 && light <= RECIPES.length - 2, `${light} light of ${RECIPES.length} is an unbalanced library`);
+	// The generated family has to carry both, because that is the half a user
+	// can re-colour: a family that is all one scheme is a family with one look.
+	const light = GENERATED.filter((r) => r.scheme === "light").length;
+	assert.ok(light >= 1 && light <= GENERATED.length - 1, `${light} light of ${GENERATED.length} generated is unbalanced`);
+	// And the library as a whole must not be one scheme either.
+	assert.ok(RECIPES.some((r) => r.scheme === "light") && RECIPES.some((r) => r.scheme === "dark"));
 });
 
-test("every recipe renders a value the engine will accept", () => {
+test("every built-in renders a value the engine will accept", () => {
 	for (const recipe of RECIPES) {
 		const out = renderRecipe({ recipeId: recipe.id, seed: "audit" });
-		assert.ok(out.backgroundImage.length > 40, `${recipe.id} produced a suspiciously short value`);
 		assert.ok(
 			isSafeBackgroundImage(out.backgroundImage),
-			`${recipe.id} produced a value the safety gate would refuse`
+			`${recipe.id} produced a value the safety gate would refuse: ${out.backgroundImage.slice(0, 80)}`
 		);
 		assert.notEqual(parseColor(out.backgroundColor), null, `${recipe.id} produced an unparsable base colour`);
 		assert.equal(out.scheme, recipe.scheme);
@@ -49,13 +67,54 @@ test("every recipe renders a value the engine will accept", () => {
 	}
 });
 
-test("rendering is reproducible and seed-sensitive", () => {
+test("a generated recipe renders a gradient stack, an illustration renders one url()", () => {
+	for (const recipe of GENERATED) {
+		const out = renderRecipe({ recipeId: recipe.id, seed: "shape" });
+		assert.ok(out.backgroundImage.length > 40, `${recipe.id} produced a suspiciously short value`);
+		assert.ok(/-gradient\(/.test(out.backgroundImage), `${recipe.id} is not a gradient stack`);
+		assert.equal(out.photo, false);
+		assert.equal(out.luminance, null, `${recipe.id} claims a measured luminance it cannot have`);
+	}
+	for (const recipe of PHOTOS) {
+		const out = renderRecipe({ recipeId: recipe.id, seed: "shape" });
+		assert.equal(out.backgroundImage, `url("${WALLPAPER_URL_PREFIX}/${recipe.photo}")`);
+		assert.equal(out.photo, true);
+		// The measurement is what lets the wash be solved against the real
+		// picture instead of a constant, so a missing one is a regression.
+		assert.equal(out.luminance, recipe.luminance);
+		assert.ok(out.luminance > 0 && out.luminance < 1, `${recipe.id} luminance out of range`);
+	}
+});
+
+test("an illustration's URL cannot be turned into another path", () => {
+	// The shape gate is the only thing standing between a rendered value and an
+	// arbitrary `url()` in a stylesheet, so prove it refuses the neighbours.
+	assert.equal(isSafeBackgroundImage(`url("${WALLPAPER_URL_PREFIX}/whale-sunset.jpg")`), true);
+	assert.equal(isSafeBackgroundImage(`url("${WALLPAPER_URL_PREFIX}/../../secret.jpg")`), false);
+	assert.equal(isSafeBackgroundImage(`url("${WALLPAPER_URL_PREFIX}/whale sunset.jpg")`), false);
+	assert.equal(isSafeBackgroundImage(`url("${WALLPAPER_URL_PREFIX}/whale-sunset.jpg?x=1")`), false);
+	assert.equal(isSafeBackgroundImage('url("https://example.com/whale-sunset.jpg")'), true);
+	assert.equal(isSafeBackgroundImage('url("file:///etc/passwd")'), false);
+});
+
+test("rendering is reproducible, and only the generated family answers a seed", () => {
 	for (const recipe of RECIPES) {
 		const a = renderRecipe({ recipeId: recipe.id, seed: "fixed" });
 		const b = renderRecipe({ recipeId: recipe.id, seed: "fixed" });
-		const c = renderRecipe({ recipeId: recipe.id, seed: "other" });
 		assert.equal(a.backgroundImage, b.backgroundImage, `${recipe.id} is not reproducible`);
+	}
+	for (const recipe of GENERATED) {
+		const a = renderRecipe({ recipeId: recipe.id, seed: "fixed" });
+		const c = renderRecipe({ recipeId: recipe.id, seed: "other" });
 		assert.notEqual(a.backgroundImage, c.backgroundImage, `${recipe.id} ignores its seed`);
+	}
+	for (const recipe of PHOTOS) {
+		// One picture is one picture: the seed selects a variation, and an
+		// illustration has none to offer. This is asserted rather than ignored so
+		// that "the shake button is hidden on a photo" has a reason behind it.
+		const a = renderRecipe({ recipeId: recipe.id, seed: "fixed" });
+		const c = renderRecipe({ recipeId: recipe.id, seed: "other" });
+		assert.equal(a.backgroundImage, c.backgroundImage, `${recipe.id} pretends to vary with its seed`);
 	}
 });
 
@@ -68,8 +127,37 @@ test("a missing or unknown recipe falls back instead of throwing", () => {
 	assert.equal(isRecipeId("nope"), false);
 });
 
+test("the retired recipes are mapped to survivors rather than collapsed onto the first", () => {
+	// A document written before the library was trimmed can still name any of
+	// these. Repairing all of them to `RECIPES[0]` would turn three deliberately
+	// different wallpapers into three copies of one.
+	for (const [retired, survivor] of [
+		["aurora", "drift"],
+		["starfield", "whale-starlit"],
+		["dune", "mist"]
+	]) {
+		assert.equal(repairRecipeId(retired), survivor);
+		assert.equal(isRecipeId(retired), false, `${retired} is still in the library`);
+		const item = normalizeItem({ kind: "recipe", ref: retired, seed: "default" });
+		assert.equal(item.ref, survivor);
+	}
+	// Nothing recognisable still lands on the first recipe, as it always has.
+	assert.equal(repairRecipeId("totally-made-up"), null);
+	assert.equal(normalizeItem({ kind: "recipe", ref: "totally-made-up" }).ref, RECIPES[0].id);
+});
+
+test("a fresh install opens on one of the illustrations", () => {
+	assert.equal(DEFAULT_STATE.single.kind, "recipe");
+	assert.equal(DEFAULT_STATE.single.ref, "whale-sunset");
+	assert.equal(isPhotoId(DEFAULT_STATE.single.ref), true);
+	// The default has to be renderable, or the first thing a new user sees after
+	// installing is an empty canvas.
+	const out = renderRecipe({ recipeId: DEFAULT_STATE.single.ref });
+	assert.equal(isSafeBackgroundImage(out.backgroundImage), true);
+});
+
 test("colour scheme matches how the picture actually measures", () => {
-	for (const recipe of RECIPES) {
+	for (const recipe of GENERATED) {
 		const out = renderRecipe({ recipeId: recipe.id, seed: "measure" });
 		const luminance = estimateImageLuminance(out.backgroundImage, parseColor(out.backgroundColor));
 		if (recipe.scheme === "dark") {
@@ -77,6 +165,11 @@ test("colour scheme matches how the picture actually measures", () => {
 		} else {
 			assert.ok(luminance > 0.55, `${recipe.id} claims light but measures ${luminance.toFixed(3)}`);
 		}
+	}
+	for (const recipe of PHOTOS) {
+		// An illustration's brightness is measured on the file, not estimated
+		// from its CSS — which is exactly why the library declares one.
+		assert.ok(recipe.scheme === "dark" && recipe.luminance < 0.3, `${recipe.id} claims dark but measures ${recipe.luminance}`);
 	}
 });
 
@@ -125,7 +218,7 @@ test("a recipe that claims neutrality keeps it under a hue shift", () => {
 	// `neutral` tag rather than by a list of ids — a list would go on naming
 	// recipes that no longer exist (this test named `mono`, which never shipped
 	// here) and would say nothing about the next one.
-	for (const recipe of RECIPES.filter((entry) => entry.tags.includes("neutral"))) {
+	for (const recipe of GENERATED.filter((entry) => entry.tags.includes("neutral"))) {
 		const still = renderRecipe({ recipeId: recipe.id, seed: "neutral", tuning: { hue: 0, softness: 0.5, grain: 0.35 } });
 		const shifted = renderRecipe({ recipeId: recipe.id, seed: "neutral", tuning: { hue: 180, softness: 0.5, grain: 0.35 } });
 		const chroma = (out) => {
@@ -149,5 +242,19 @@ test("defaultGrainFor reports a calibrated value for every recipe", () => {
 	for (const id of RECIPE_IDS) {
 		const grain = defaultGrainFor(id);
 		assert.ok(grain >= 0 && grain <= 1, `${id} default grain out of range`);
+	}
+});
+
+test("every illustration the library names is a file the package actually ships", () => {
+	// The library and `media/wallpapers/` are two lists that cannot be allowed to
+	// drift: a recipe naming a missing file is a built-in that renders nothing.
+	const fs = require("node:fs");
+	const path = require("node:path");
+	const directory = path.join(__dirname, "..", "media", "wallpapers");
+	for (const recipe of PHOTOS) {
+		const file = path.join(directory, recipe.photo);
+		assert.equal(fs.existsSync(file), true, `${recipe.id} names ${recipe.photo}, which is not in the package`);
+		const bytes = fs.statSync(file).size;
+		assert.ok(bytes > 1024, `${recipe.id} ships a file of ${bytes} bytes`);
 	}
 });

@@ -98,7 +98,16 @@ function itemToBackground(item, tuning) {
 			image: rendered.backgroundImage,
 			color: rendered.backgroundColor,
 			complexity: rendered.complexity,
-			luminance: estimateImageLuminance(rendered.backgroundImage, parseColor(rendered.backgroundColor))
+			// A bundled illustration carries a brightness measured on the shipped
+			// file, and it replaces the gradient estimate exactly the way a
+			// user's imported picture's own measurement does. A generated recipe
+			// has no measurement (`null`), so its stack is estimated as before.
+			luminance: rendered.luminance !== null
+				? rendered.luminance
+				: estimateImageLuminance(rendered.backgroundImage, parseColor(rendered.backgroundColor)),
+			// Grain is halved on a raster picture: the texture is already in the
+			// pixels, and the full-strength overlay reads as noise on top of it.
+			raster: rendered.photo === true
 		};
 	}
 	if (item.kind === "gradient") {
@@ -106,7 +115,8 @@ function itemToBackground(item, tuning) {
 			image: item.ref,
 			color: "rgba(0, 0, 0, 0)",
 			complexity: 0.35,
-			luminance: estimateImageLuminance(item.ref, null)
+			luminance: estimateImageLuminance(item.ref, null),
+			raster: false
 		};
 	}
 	// `image` (a data URL) and `url` (a remote address) both end up here. The
@@ -117,6 +127,7 @@ function itemToBackground(item, tuning) {
 		image: `url("${source}")`,
 		color: "rgba(0, 0, 0, 0)",
 		complexity: 0.5,
+		raster: true,
 		// A local picture was measured when it was imported (`image.sampleLuminance`)
 		// and that number rides on the item from then on, so the readability floor
 		// is solved against the real photograph rather than a constant.
@@ -550,8 +561,9 @@ function createEngine(options) {
 			}
 			if (grain !== null) {
 				// A raster picture already has its own texture; adding the full grain
-				// on top reads as noise, so custom pictures get half of it.
-				const strength = item.kind === "recipe" ? state.tuning.grain : state.tuning.grain * 0.5;
+				// on top reads as noise, so custom pictures — and the bundled
+				// illustrations, which are pictures too — get half of it.
+				const strength = background.raster ? state.tuning.grain * 0.5 : state.tuning.grain;
 				grain.style.opacity = String(Math.round(strength * 55) / 100);
 			}
 			applyWash(resolveAlpha(raw, background).effective, raw);

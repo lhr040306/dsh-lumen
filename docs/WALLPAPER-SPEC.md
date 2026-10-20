@@ -1,10 +1,10 @@
 # 壁纸规格 · dsh-lumen
 
-本文是 `dsh-lumen` 的参考规格：壁纸条目、5 套配方、微调参数、洗色与可读性下限、本地图片的亮度实测、轮播调度的全部常量、状态字段、以及持久化格式。
+本文是 `dsh-lumen` 的参考规格：壁纸条目、6 套内置壁纸、微调参数、洗色与可读性下限、本地图片的亮度实测、轮播调度的全部常量、状态字段、以及持久化格式。
 
 其中的数字都不是从注释里抄的，而是从 `src/` 里的导出常量与测试用的边界值读出来的。改动源码后请一并更新本文（`tests/state.test.cjs` 会断言持久化字段列表与状态自身字段列表完全一致，那是最容易漂移的一处）。
 
-**版本**：`schema 1` · 插件 `1.1.0`
+**版本**：`schema 1` · 插件 `1.2.0`
 
 ---
 
@@ -72,25 +72,71 @@ interface WallpaperItem {
 
 ---
 
-## 三、内置配方
+## 三、内置壁纸
 
-5 套，深色 3 套、浅色 2 套。`scheme` 是设计取向，配方在另一套主题下同样能渲染——它只影响配方自身的取色倾向。
+6 套：2 套生成式配方（1 深 1 浅）+ 4 张随包插画。`scheme` 是设计取向，配方在另一套主题下同样能渲染——它只影响配方自身的取色倾向。
 
-| id | 中文 | English | scheme | softness 默认 | grain 默认 | complexity | tags |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `drift` | 弥散 | Drift | dark | 0.62 | 0.22 | 0.30 | calm, glow |
-| `aurora` | 极光 | Aurora | dark | 0.72 | 0.18 | 0.42 | cool, band |
-| `starfield` | 星野 | Starfield | dark | 0.30 | 0.30 | 0.55 | night, point |
-| `mist` | 晨雾 | Mist | light | 0.78 | 0.16 | 0.20 | cool, calm |
-| `dune` | 沙丘 | Dune | light | 0.50 | 0.34 | 0.30 | warm, band |
+| id | 中文 | English | 类型 | scheme | softness 默认 | grain 默认 | complexity | tags |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `drift` | 弥散 | Drift | 生成式 | dark | 0.62 | 0.22 | 0.30 | calm, glow |
+| `mist` | 晨雾 | Mist | 生成式 | light | 0.78 | 0.16 | 0.20 | cool, calm |
+| `whale-point-half` | 夜潮 | Night Tide | 插画 | dark | 0.50 | 0.20 | 0.55 | photo, whale |
+| `whale-starlit` | 星海 | Starlit | 插画 | dark | 0.50 | 0.20 | 0.50 | photo, whale |
+| `whale-sunset` | 黄昏 | Dusk | 插画 | dark | 0.50 | 0.20 | 0.60 | photo, whale |
+| `whale-point-full` | 深蓝 | Deep Blue | 插画 | dark | 0.50 | 0.20 | 0.55 | photo, whale |
 
 **`complexity`（0–1）** 不是给用户看的标签，是**自动弱化的输入**：它估计画面有多"花"，越高则洗色抬升越多。取值和实际观感对应：
 
 - `mist` 0.20 —— 大片柔和薄雾，几乎不需要保护
-- `aurora` 0.42 —— 极光带分层，中等偏花
-- `starfield` 0.55 —— 最花，大量点状高光
+- `drift` 0.30 —— 四团弥散光斑加暗角
+- `whale-sunset` 0.60 —— 最花，也是最亮的一张（画面里有一整片晚霞）
 
-**`softness` / `grain` 默认值** 是每个配方单独标定的（`defaultSoftnessFor` / `defaultGrainFor`），不是全局常数。例如 `dune` 的 grain 默认 0.34（沙粒感靠它），而 `mist` 只有 0.16（浅色薄雾加颗粒会显脏）。
+**`softness` / `grain` 默认值** 是每个配方单独标定的（`defaultSoftnessFor` / `defaultGrainFor`），不是全局常数。例如 `drift` 的 softness 默认 0.62（光斑要足够散），而 `mist` 的 grain 只有 0.16（浅色薄雾加颗粒会显脏）。
+
+### 3.1 为什么插画也是"配方"
+
+插画在数据模型里就是一个 `recipe` 条目——`ref` 是 id，没有新的 `kind`。面板的 chip 行、播放列表、轮播调度、洗色求解与持久化全都已经工作在"一个等于内置 id 的 `ref`"上，因此加一种素材不需要它们任何一处改动。差别只在 `build()` 内部：
+
+```js
+build() { return { layers: ['url("/lumen/wallpaper/whale-sunset.jpg")'], base: {r,g,b} }; }
+```
+
+也就是说插画是**恰好只有一层 `url()` 的配方**。由此带来三条明确的差异，都写在下面：
+
+| 差异 | 生成式 | 插画 |
+| --- | --- | --- |
+| `seed` | 选择一种构图 | 无效果（一张图就是一张图），面板不给「摇一摇」 |
+| `hue` / `softness` | 有效 | 无效果（颗粒仍然生效，且只有一半力度） |
+| 亮度 | 由 `estimateImageLuminance` 从渐变栈估计 | 在图片文件上**实测**，写在配方的 `luminance` 上 |
+
+### 3.2 插画的实测亮度
+
+四个数字不是猜的：按 `image.sampleLuminance` 的同一套定义——64×64 面积平均、WCAG 相对亮度、**上四分位**——在随包的 JPEG 上量出来：
+
+| id | 文件 | 实测亮度（p75） | 平均色 `base` |
+| --- | --- | --- | --- |
+| `whale-point-half` | `whale-point-half.jpg` | 0.132 | `rgb(78, 96, 133)` |
+| `whale-starlit` | `whale-starlit.jpg` | 0.085 | `rgb(39, 51, 78)` |
+| `whale-sunset` | `whale-sunset.jpg` | 0.245 | `rgb(126, 110, 130)` |
+| `whale-point-full` | `whale-point-full.jpg` | 0.133 | `rgb(82, 103, 150)` |
+
+实测值取代了 `NEUTRAL_LUMINANCE`（0.42）这个中性常数——那是对**拿不到像素**的图片（远程地址）的兜底，而随包的图片自己带着像素，没有理由用常数凑。`base` 是图片自身的平均色，用作 JPEG 加载完成前的那一层底色，避免黑闪。
+
+### 3.3 退役配方
+
+`aurora`（极光）、`starfield`（星野）、`dune`（沙丘）已不再随包，但旧状态文件里可能还写着它们。`repairRecipeId` 按**意图**改写，而不是让它们一起塌到 `RECIPES[0]`：
+
+| 退役 id | 改写为 | 理由 |
+| --- | --- | --- |
+| `aurora` | `drift` | 都是深色弥散光 |
+| `starfield` | `whale-starlit` | 都表达"星空下的夜" |
+| `dune` | `mist` | 都是浅色、安静的一面 |
+
+完全不认识的 id 仍然落到 `RECIPES[0]`，与之前一致——条目仍然是"一张内置壁纸"。
+
+### 3.4 首次安装的默认
+
+`DEFAULT_STATE.single` 是 `whale-sunset`（黄昏）。只有**全新安装**会看到它：已经写过 `single` 的文档保留自己的选择，包括那些写着退役 id、随后被上面那张表改写的文档。默认值是一次第一印象，不是覆盖用户选择的策略。
 
 ---
 
@@ -105,10 +151,12 @@ renderRecipe({ recipeId, seed, tuning })
 
 | 输出字段 | 含义 |
 | --- | --- |
-| `backgroundImage` | 一串 CSS 渐变，可直接做 `background-image`。典型长度 300–800 字符 |
-| `backgroundColor` | 兜底底色，形如 `rgb(4, 12, 23)`，在所有渐变之下 |
+| `backgroundImage` | 一串 CSS 渐变，可直接做 `background-image`。典型长度 300–800 字符；插画是单层 `url("/lumen/wallpaper/<name>")` |
+| `backgroundColor` | 兜底底色，形如 `rgb(4, 12, 23)`，在所有渐变之下；插画取自身平均色 |
 | `scheme` | `dark` / `light`，来自配方 |
 | `complexity` | 来自配方，供自动弱化使用 |
+| `luminance` | 实测亮度；生成式为 `null`（由引擎估计），插画为文件上的测量值 |
+| `photo` | 是否随包插画。为 `true` 时引擎把颗粒降到一半 |
 
 未知的 `recipeId` 回退到 `drift`。**这个函数不抛异常**——任何输入都返回可渲染的值。
 
@@ -119,9 +167,9 @@ renderRecipe({ recipeId, seed, tuning })
 | 原语 | 参数 | 用途 |
 | --- | --- | --- |
 | `radial` | `{ x, y, rx, ry, color, alpha, fade }` | 一个弥散光斑。位置与半径都是百分比，所以对任意视口比例都成立 |
-| `linear` | `(angle, stops)` | 条带状渐变（`aurora` / `dune` 的带子） |
+| `linear` | `(angle, stops)` | 条带状渐变（`mist` 的底雾） |
 | `vignette` | `(strength, inset)` | 四周压暗，把视线收到中间 |
-| `halo` | `(strength, inset)` | 中心提亮（`drift` / `aurora` 的聚焦感） |
+| `halo` | `(strength, inset)` | 边缘提亮（`mist` 的空气感） |
 
 颜色由 `tone(L, chroma, hue)` 产生——在 **Oklab / OKLCH** 感知空间里取色，而不是在 HSL 里。这一点有实际意义：HSL 里"同样的明暗变化"在感知上并不均匀，一套配方换色相后会一半偏亮一半偏暗；Oklab 的 `L` 是感知均匀的，所以配方换色相后亮度观感保持一致。超出 sRGB 色域时对色度做二分收敛（`oklab.cjs`）。
 
@@ -225,6 +273,8 @@ effectiveAlpha = max(opacity, autoDim 抬升, readability 求解下限)
 nearest-rank 而非插值：返回的永远是**某个像素真正有过的亮度**，而不是两个采样点的平均值——后者不落在任何像素上。全透明像素（`a === 0`）跳过，通道读不成有限数的样本也跳过；一个样本都不剩时返回 `NEUTRAL_LUMINANCE`。
 
 `sampleLuminance` 在任何失败路径上都返回 `null` 而不是猜一个值，`prepareImage` 把 `null` 原样放进结果的 `luminance` 字段。
+
+**随包的四张插画也走这个定义**，只是测量发生在构建期而不是导入时：数值写在配方的 `luminance` 上（第三节 3.2 的表），引擎读到就直接用它，不再从 CSS 估计。于是"用户自己挑的图"和"包里带的图"在洗色求解里是可比的同一类数字，而远程地址仍然只有中性常数。
 
 ### 6.6 `fit` 三种模式
 
@@ -455,6 +505,16 @@ interface Schedule {
 | `GET` / `HEAD` | `/lumen/splash/media` | 按 `Range` 流式送出当前媒体（200 / 206 / 304 / 416） |
 | `POST` | `/lumen/splash/clear` | 忘记开屏并删除它的字节；重复调用返回 `cleared: false`，不是错误 |
 
+`/lumen/wallpaper`（同一套围栏，见 9.6）：
+
+| 方法 | 路径 | 语义 |
+| --- | --- | --- |
+| `GET` / `HEAD` | `/lumen/wallpaper/<name>.jpg` | 送出 `media/wallpapers/` 下的随包插画（200 / 304）。命中不了白名单一律 404，其他方法 405 |
+
+**白名单是那个目录，不是一份副本。** 文件名在进程内读一次 `media/wallpapers/`、按 `^[a-z0-9-]+\.(jpg|jpeg|png|webp)$` 过滤成一张表；请求里的字符串只用来**查表**，不会被拼进任何路径。因此路径穿越在这里不是"被防住了"，而是**没有可以穿越的代码路径**。
+
+`cache-control: no-cache` + `etag`（大小与 mtime 派生）而不是长 `max-age`：文件名不随画作更新而变，一个月的缓存会活过填满它的那个版本。校验成本是一次本地 `stat`。
+
 ### 9.5 上限
 
 | 常量 | 值 | 作用 |
@@ -472,7 +532,7 @@ interface Schedule {
 
 ### 9.6 路由围栏
 
-两条路由前缀（`/lumen/api`、`/lumen/splash`）过**同一道围栏，顺序固定三层**：
+三条路由前缀（`/lumen/api`、`/lumen/splash`、`/lumen/wallpaper`）过**同一道围栏，顺序固定三层**：
 
 | 层 | 内容 | 缺失时 |
 | --- | --- | --- |
@@ -509,7 +569,7 @@ interface Schedule {
 
 | 字段 | 含义 |
 | --- | --- |
-| `plugin` / `build` / `schema` | `"dsh-lumen"` / `"1.1.0"` / `1` |
+| `plugin` / `build` / `schema` | `"dsh-lumen"` / `"1.2.0"` / `1` |
 | `status` | `booting` · `ready` · `degraded` · `disposed` |
 | `warnings` | `[dsh-lumen]` 前缀的告警行数组 |
 | `health` | `{ hostAvailable, hostReason, lastError, hasStorage }` |
@@ -569,6 +629,8 @@ interface Schedule {
 | 旧文档的条目没有 `luminance` | `normalizeLuminance(undefined)` 是 `null`，引擎回退到中性常数——同样与之前一致 |
 
 也就是说，一个由旧版本写下的文档被新版本读到，渲染结果与旧版本**逐像素相同**；反向（新文档被旧版本读）也只是丢掉这两个增量字段，`position` 退回居中、`luminance` 退回常数。同一条性质还让降级变得安全：卸载到旧版本不会让洗色或调度出问题。
+
+**为什么删掉三套配方也没抬 `schema`。** `ref` 的含义没有变——它仍然是一个配方 id，缺省行为仍然是"不认识的 id 落到 `RECIPES[0]`"。`repairRecipeId` 只是把这个缺省做得更贴近原意（见 3.3）。旧版读新版文档时，`whale-*` 是它不认识的 id，于是显示 `drift`：不是崩溃，也不是空画布，而是一张仍然能看的壁纸。
 
 ---
 

@@ -704,8 +704,8 @@ test("the preview mounts the real host half, routes and all", async (t) => {
 	const hostModule = await import(pathToFileURL(HOST_MODULE).href);
 	hostModule.apply(bridge.ctx);
 
-	assert.deepEqual(bridge.routes.map((route) => route.path).sort(), ["/lumen/api", "/lumen/splash"]);
-	assert.equal(bridge.effectLabels().length, 2, "a route was registered outside an effect and would outlive dispose");
+	assert.deepEqual(bridge.routes.map((route) => route.path).sort(), ["/lumen/api", "/lumen/splash", "/lumen/wallpaper"]);
+	assert.equal(bridge.effectLabels().length, 3, "a route was registered outside an effect and would outlive dispose");
 	// A fresh install has no document at all, and the answer is the packaged
 	// clip rather than nothing: the splash ships on, and `splash.source` is what
 	// a user sets to `off` to get out of it.

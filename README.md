@@ -6,17 +6,17 @@
 
 **给 DeepSeek Harness（DSH）的壁纸调度器**
 
-5 套纯程序化生成的弥散光壁纸 &nbsp;·&nbsp; 本地图片 / 图片地址 / 渐变<br>
+2 套程序化生成的弥散光壁纸 &nbsp;+&nbsp; 4 张随包内置插画 &nbsp;·&nbsp; 本地图片 / 图片地址 / 渐变<br>
 按间隔 · 整点 · 每日 · 每次会话自动换图，带交叉淡入<br>
 **自带一段开屏短片：装好即默认启用，可一键换成自己的素材或关掉**
 
 [![license](https://img.shields.io/badge/license-MIT-534AB7)](LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A5%2018-3B6D11)](package.json)
-[![tests](https://img.shields.io/badge/tests-343%20passing-0F6E56)](tests)
+[![tests](https://img.shields.io/badge/tests-373%20passing-0F6E56)](tests)
 [![plugin](https://img.shields.io/badge/DSH-plugin-534AB7)](package.json)
 [![github](https://img.shields.io/badge/GitHub-lhr040306%2Fdsh--lumen-534AB7?logo=github&logoColor=white)](https://github.com/lhr040306/dsh-lumen)
 
-[功能](#功能速览) &nbsp;·&nbsp; [安装](#安装) &nbsp;·&nbsp; [壁纸](#12-套内置壁纸) &nbsp;·&nbsp; [开发](#本地开发) &nbsp;·&nbsp; [文档](#文档索引)
+[功能](#功能速览) &nbsp;·&nbsp; [安装](#安装) &nbsp;·&nbsp; [壁纸](#6-套内置壁纸) &nbsp;·&nbsp; [开发](#本地开发) &nbsp;·&nbsp; [文档](#文档索引)
 
 </div>
 
@@ -24,7 +24,7 @@
 
 > `dsh-lumen` 的目标不是"换一张好看的图"，而是回答两个问题：**现在显示什么**，以及 **下一次什么时候变、变成什么**。
 >
-> 壁纸零图片素材、零运行时依赖，**完全离线**算出来；开屏随包内置一段短片（`media/splash.mp4`，2.0 MB），装好就是默认开屏，不想要可以一键关掉。
+> 壁纸分两类：两套**参数化配方**，运行时用 CSS 渐变**完全离线**算出来，没有图片素材；四张插画随包内置（`media/wallpapers/`，合计约 1.1 MB），由宿主半边按形状白名单送出。装好第一眼是那张「黄昏」。开屏另有一段随包短片（`media/splash.mp4`，2.0 MB），不想要可以一键关掉。
 
 ---
 
@@ -32,7 +32,7 @@
 
 | | 常见做法 | dsh-lumen |
 | :-- | :-- | :-- |
-| **壁纸从哪来** | 打包图片素材，或让用户自己传 | 5 套**参数化配方**，运行时用 CSS 渐变算出来。不打包任何图片，可选集也不随体积增长 |
+| **壁纸从哪来** | 打包一堆图片素材，或让用户自己传 | 两套**参数化配方**用 CSS 渐变算出来，可选集不随体积增长；另外四张插画随包内置，取舍见[壁纸规格](docs/WALLPAPER-SPEC.md)第三节 |
 | **什么时候换** | 装上就一直是一张 | **调度器**：4 种触发方式 × 3 种顺序策略，落在可预测的钟点上 |
 | **文字还看得清吗** | 交给用户调透明度 | 洗色层透明度对着 **WCAG AA 对比度求解**，且永远不比用户设的更透明 |
 
@@ -44,18 +44,19 @@
 
 | 模块 | 内容 |
 | :-- | :-- |
-| **壁纸来源** | 5 套内置配方（深色 3 / 浅色 2）· 本地图片（可多选、可拖拽）· 图片地址 · 双色标渐变 |
+| **壁纸来源** | 2 套内置配方（深 1 / 浅 1）· 4 张内置插画 · 本地图片（可多选、可拖拽）· 图片地址 · 双色标渐变 |
 | **轮播调度器** | 4 种触发方式 × 3 种顺序策略 · 间隔模式**锚定网格**，不随刷新重置 · 洗牌走完一轮前不重复 · 有损追赶 |
 | **开屏** | **内置短片默认开启** · 一个素材两处去处 · 图片开屏走纯 CSS **首帧上色** · 视频静音自动播放 · 四个出口全部有界 |
 | **可读性下限** | alpha 对着 WCAG 2.1 AA 求解 · 面板**显示实际生效值**而非偷偷改掉 · 本地图片**实测亮度**驱动 |
-| **工程** | 中英双语 165 条键完全对称 · 两层持久化跨重启生效 · 插件入口**从不抛异常** · 365 项单元测试 |
+| **工程** | 中英双语 166 条键完全对称 · 两层持久化跨重启生效 · 插件入口**从不抛异常** · 373 项单元测试 |
 
 <details>
 <summary>展开每一项的细节</summary>
 
 **壁纸来源**
 
-- 5 套内置配方（深色 3 套、浅色 2 套），全部由参数实时生成，无图片素材；每套配方可换种子，同一风格的另一种构图
+- 2 套内置配方（弥散 / 晨雾），由参数实时生成，无图片素材；每套配方可换种子，同一风格的另一种构图
+- 4 张内置插画（夜潮 / 星海 / 黄昏 / 深蓝），随包附带，装好即用；插画没有种子，所以面板上不给它「摇一摇」
 - 本地图片：**可多选，也可直接把文件拖到那一行**；等比缩放压缩后本地保存，原图不上传
 - 图片地址（仅 `http` / `https`）、双色标线性渐变
 
@@ -84,25 +85,28 @@
 - 中英双语，两套字典各 149 条键、完全对称
 - 持久化跨 DSH 重启生效（宿主侧权威副本 + `localStorage` 快速种子）
 - 插件入口**从不抛异常**——最坏情况是"壁纸不出现 + 控制台一行日志"，不会让 DSH 起不来
-- 365 项单元测试，调度部分是纯函数，边界情况（睡过触发点、时钟回拨、夏令时、两张图的洗牌列表）都能当普通单测来测
+- 373 项单元测试，调度部分是纯函数，边界情况（睡过触发点、时钟回拨、夏令时、两张图的洗牌列表）都能当普通单测来测
 
 </details>
 
 ---
 
-## 5 套内置壁纸
+## 6 套内置壁纸
 
-全部为程序化配方，`complexity` 是"画面有多花"的估计值（0–1），驱动自动弱化。
+前两套是**参数化配方**，`complexity` 是"画面有多花"的估计值（0–1），驱动自动弱化；后四套是**随包插画**，亮度是在图片文件上实测的，同样喂给可读性下限。
 
-| 配方 | 名称 | 中文名 | 取向 | complexity | 标签 |
+| 配方 | 名称 | 中文名 | 取向 | complexity | 类型 |
 | :-- | :-- | :-- | :-- | :-- | :-- |
-| `drift` | Drift | 弥散 | 深 | 0.30 | calm, glow |
-| `aurora` | Aurora | 极光 | 深 | 0.42 | cool, band |
-| `starfield` | Starfield | 星野 | 深 | 0.55 | night, point |
-| `mist` | Mist | 晨雾 | 浅 | 0.20 | cool, calm |
-| `dune` | Dune | 沙丘 | 浅 | 0.30 | warm, band |
+| `drift` | Drift | 弥散 | 深 | 0.30 | 生成式 |
+| `mist` | Mist | 晨雾 | 浅 | 0.20 | 生成式 |
+| `whale-point-half` | Night Tide | 夜潮 | 深 | 0.55 | 插画 |
+| `whale-starlit` | Starlit | 星海 | 深 | 0.50 | 插画 |
+| `whale-sunset` | Dusk | 黄昏 | 深 | 0.60 | 插画（**首次安装的默认**） |
+| `whale-point-full` | Deep Blue | 深蓝 | 深 | 0.55 | 插画 |
 
-每个配方都有一个 **seed**：同一配方换一个种子就是同一风格的另一种构图（面板上的「摇一摇」，也可以复制种子分享给别人）。
+前两套各有一个 **seed**：同一配方换一个种子就是同一风格的另一种构图（面板上的「摇一摇」）。插画是一张固定的图，换种子不会变，所以那四张不显示这个按钮。
+
+旧版本里被退役的三套（`aurora` 极光、`starfield` 星野、`dune` 沙丘）如果还留在你的状态文件里，会按**意图**就地改写：极光 → 弥散、星野 → 星海、沙丘 → 晨雾，而不是三条一起塌到同一张。
 
 ---
 
@@ -131,7 +135,7 @@ dsh plugin --profile web add github:lhr040306/dsh-lumen
 dsh plugin --profile web add /仓库根目录的绝对路径
 ```
 
-要钉住版本，就在地址后面加标签或 commit（`https://github.com/lhr040306/dsh-lumen#v1.1.0`、`github:lhr040306/dsh-lumen#v1.1.0`、`...#<commit>`）。
+要钉住版本，就在地址后面加标签或 commit（`https://github.com/lhr040306/dsh-lumen#v1.2.0`、`github:lhr040306/dsh-lumen#v1.2.0`、`...#<commit>`）。
 
 装完**重启 DSH**，然后打开 **设置 → 壁纸**。
 
@@ -158,7 +162,7 @@ npm run verify
 | :-- | :-- |
 | `npm run build:check` | 校验构建产物与源码一致（改了源码没重新生成会失败） |
 | `npm run typecheck` | 静态检查每个源码文件、脚本、HTML 引用是否可解析 |
-| `npm test` | 18 个测试文件、365 项 |
+| `npm test` | 18 个测试文件、373 项 |
 
 **会写文件** —— 重新生成 `lib/` 与 `locale/`：
 
@@ -172,14 +176,14 @@ npm run build
 ```
 dsh-lumen/（仓库根 = 包根）
 ├── lib/                     构建产物
-│   ├── index.js             宿主半边：状态文件 + /lumen/api 与 /lumen/splash 路由 + 启动遮罩与守卫
+│   ├── index.js             宿主半边：状态文件 + /lumen/api、/lumen/splash、/lumen/wallpaper 路由 + 启动遮罩与守卫
 │   ├── client.js            浏览器半边（由 src/ 的 16 个模块拼成）
 │   └── types/               手写类型声明
 ├── src/                     浏览器半边的源码（16 个模块）
 │   ├── index.cjs            装配缝：store + engine + splash + panel + 宿主服务
 │   ├── state.cjs            状态模型：一个形状、一个归一化器、一份序列化
 │   ├── scheduler.cjs        轮播调度器（纯函数）
-│   ├── wallpapers.cjs       5 套配方与渲染
+│   ├── wallpapers.cjs       2 套配方 + 4 张插画，与统一渲染
 │   ├── engine.cjs           渲染引擎：DOM 层叠、洗色、token 覆盖
 │   ├── splash.cjs           开屏的浏览器半边
 │   ├── store.cjs            两层持久化
@@ -188,13 +192,14 @@ dsh-lumen/（仓库根 = 包根）
 │   ├── image.cjs            本地图片解码 / 缩放 / 压缩 / 亮度实测
 │   ├── rng.cjs              mulberry32 + FNV-1a 种子化随机
 │   ├── react-bridge.cjs     把无框架面板挂进 React 设置区
-│   ├── i18n.cjs             双语字典与查找（149 条）
+│   ├── i18n.cjs             双语字典与查找（166 条）
 │   └── ui/                  面板、DOM 构造器、样式
 ├── preview/                 浏览器可交互预览（工具，不属于发布产物）
 ├── scripts/                 build / typecheck / serve
-├── tests/                   18 个测试文件、365 项
+├── tests/                   18 个测试文件、373 项
 ├── media/
-│   └── splash.mp4           随包内置的开屏短片（默认启用的就是它）
+│   ├── splash.mp4           随包内置的开屏短片（默认启用的就是它）
+│   └── wallpapers/          四张内置插画，由 /lumen/wallpaper 送出
 ├── locale/                  zh.json / en.json（由源码生成）
 ├── docs/                    INSTALL / INNOVATION / SPLASH-SPEC / WALLPAPER-SPEC / PACKAGE
 ├── cordis.patch.yml         profile 补丁层：插入一个 loader 条目
@@ -211,7 +216,7 @@ dsh-lumen/（仓库根 = 包根）
 
 | 文档 | 内容 |
 | :-- | :-- |
-| [`docs/PACKAGE.md`](docs/PACKAGE.md) | 包的完整说明：功能、5 套配方、调度器、可读性下限、持久化、隐私与安全、兼容性 |
+| [`docs/PACKAGE.md`](docs/PACKAGE.md) | 包的完整说明：功能、6 套内置壁纸、调度器、可读性下限、持久化、隐私与安全、兼容性 |
 | [`docs/INSTALL.md`](docs/INSTALL.md) | 安装、更新、卸载、验证、故障排查 |
 | [`docs/INNOVATION.md`](docs/INNOVATION.md) | 在哪些地方做了不同的技术选择，以及为什么 |
 | [`docs/WALLPAPER-SPEC.md`](docs/WALLPAPER-SPEC.md) | 配方参数、状态字段、调度常量、存储格式的完整规格 |
@@ -224,11 +229,11 @@ dsh-lumen/（仓库根 = 包根）
 <details>
 <summary>展开</summary>
 
-- **插件自身不发任何网络请求。** 内置壁纸本地算出；`图片地址` 由浏览器直接加载，插件不代理、不上报、不探测可达性。
+- **插件自身不发任何网络请求。** 两套生成式壁纸由参数实时算出；四张内置插画由宿主从包内读出、经本机路由 `/lumen/wallpaper` 送出，不出网也不解压到别处；`图片地址` 由浏览器直接加载，插件不代理、不上报、不探测可达性。
 - **壁纸不读磁盘。** 本地图片走浏览器 `File` API 读入（点选和拖拽同一条路径），缩放压缩后存本地，原图不会被复制到别处。
 - **开屏会写自己的媒体目录。** 媒体字节落在 `$DSH_HOME/lumen-media/`，**文件名由宿主生成**，状态里只留文件名——既不是路径，也不是字节。
 - **内置开屏不出网、不写盘。** 那段短片就在包里（`media/splash.mp4`），直接由宿主从包内读出、经本机路由 `/lumen/splash/media` 播放，两份拷贝都不产生；状态里只有一个来源标记。
-- **宿主路由是围栏，不是鉴权。** `/lumen/api` 与 `/lumen/splash` 要求回环地址的 `Host` + 同源浏览器标记（DNS rebinding / 跨站防御），并叠加宿主提供的会话鉴权层。
+- **宿主路由是围栏，不是鉴权。** `/lumen/api`、`/lumen/splash` 与 `/lumen/wallpaper` 走同一道围栏，要求回环地址的 `Host` + 同源浏览器标记（DNS rebinding / 跨站防御），并叠加宿主提供的会话鉴权层。
 - **重名也不冲突。** 所有 DOM 节点带 `data-dsh-lumen` 标记，样式表 id 为 `dsh-lumen-style`，存储键前缀 `dsh-lumen:`。
 
 </details>

@@ -105,6 +105,18 @@ function formatClockStamp(ts, now) {
 	return sameDay ? clock : `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${clock}`;
 }
 
+/** The built-in entry behind a `recipe`-kind item, or `undefined`. */
+function builtinOf(item) {
+	if (!item || item.kind !== "recipe") return undefined;
+	return RECIPES.find((r) => r.id === item.ref);
+}
+
+/** True when the item is one of the bundled illustrations rather than a recipe. */
+function isPhotoItem(item) {
+	const recipe = builtinOf(item);
+	return recipe !== undefined && typeof recipe.photo === "string";
+}
+
 /** The display name of a playlist entry. */
 function itemLabel(item, lang, translate) {
 	if (!item) return "";
@@ -115,8 +127,12 @@ function itemLabel(item, lang, translate) {
 	// test.
 	const t = typeof translate === "function" ? translate : createTranslator(lang);
 	if (item.kind === "recipe") {
-		const recipe = RECIPES.find((r) => r.id === item.ref);
+		const recipe = builtinOf(item);
 		const name = recipe === undefined ? item.ref : lang === "en" ? recipe.name.en : recipe.name.zh;
+		// A seed is a variation selector for a generated recipe. An illustration
+		// has no variations, so printing one next to its name would advertise a
+		// knob that turns nothing.
+		if (isPhotoItem(item)) return name;
 		return item.seed === "default" ? name : `${name} · ${item.seed}`;
 	}
 	if (item.kind === "image") return `${t("kind.image")} (${Math.round(item.ref.length / 1024)}KB)`;
@@ -319,6 +335,8 @@ function createPanel(deps) {
 	const heroPreview = dom.h("div", { class: "lumen-hero-preview" });
 	const heroName = dom.h("div", { class: "lumen-hero-name" });
 	const heroSub = dom.h("div", { class: "lumen-hero-sub" });
+	/** The "shake" control, kept so `sync` can hide it on an illustration. */
+	let shakeButton = null;
 
 	function shake() {
 		const seed = `s${Math.floor(Math.random() * 0xffffffff).toString(36)}`;
@@ -354,7 +372,11 @@ function createPanel(deps) {
 		// niche, and every extra control in the header pushes the actual
 		// wallpapers further down the panel.
 		const actions = dom.h("div", { class: "lumen-hero-actions" });
-		actions.appendChild(dom.button(t("hero.shake"), shake, { small: true, hint: t("hero.shake.hint") }));
+		// Hidden rather than disabled for an illustration: "shake" means "same
+		// recipe, fresh parameters", and a picture has neither. A disabled button
+		// would pose the question "why can't I?" on every photo.
+		shakeButton = dom.button(t("hero.shake"), shake, { small: true, hint: t("hero.shake.hint") });
+		actions.appendChild(shakeButton);
 		actions.appendChild(dom.button(t("hero.add"), addCurrentToList, { small: true, variant: "ghost" }));
 		const meta = dom.h("div", { class: "lumen-hero-meta" }, [heroName, heroSub, actions]);
 		heroNode.appendChild(dom.h("div", { class: "lumen-hero" }, [heroPreview, meta]));
@@ -1345,8 +1367,13 @@ function createPanel(deps) {
 		const background = itemToBackground(item, state.tuning);
 		heroPreview.style.backgroundImage = background === null ? "none" : background.image;
 		heroPreview.style.backgroundColor = background === null ? "transparent" : background.color;
+		const photo = isPhotoItem(item);
 		heroName.textContent = itemLabel(item, lang, t);
-		heroSub.textContent = `${t(`kind.${item.kind}`)} · ${t("hero.seed")} ${item.seed}`;
+		// An illustration has no seed to show and no "generated" kind to claim.
+		heroSub.textContent = photo
+			? t("kind.photo")
+			: `${t(`kind.${item.kind}`)} · ${t("hero.seed")} ${item.seed}`;
+		if (shakeButton !== null) shakeButton.style.display = photo ? "none" : "";
 
 		// banner
 		bannerNode.textContent = banner.text === null ? "" : banner.text;

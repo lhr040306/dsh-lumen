@@ -17,13 +17,13 @@ const NS = "settings.lumen";
 
 const TABLE = {
 	"meta.title": ["Lumen · 流转壁纸", "Lumen · Wallpaper"],
-	"meta.description": ["程序化壁纸 + 轮播调度：内置生成式壁纸，按间隔 / 整点 / 每日自动更换", "Procedural wallpapers with a rotation scheduler: generated designs, changing on an interval, the hour, or daily"],
+	"meta.description": ["程序化壁纸 + 轮播调度：两张生成式壁纸与四张内置插画，按间隔 / 整点 / 每日自动更换", "Procedural wallpapers with a rotation scheduler: two generated designs plus four bundled illustrations, changing on an interval, the hour, or daily"],
 
 	"section.label": ["壁纸", "Wallpaper"],
 
 	"group.current": ["当前壁纸", "Current"],
 	"group.builtin": ["内置壁纸", "Built-in"],
-	"group.builtin.hint": ["这些壁纸不用图片，全部按参数现场画出来", "Drawn from parameters on the spot — no image files involved"],
+	"group.builtin.hint": ["前两张按参数现场画出来，后四张是随包内置的插画", "The first two are drawn from parameters on the spot; the last four are illustrations bundled with the package"],
 	"group.custom": ["自定义", "Custom"],
 	"group.splash": ["开屏", "Splash"],
 	"group.splash.hint": ["DSH 启动时先显示这张图或这段视频，界面就绪后自动让位", "Shown while DSH starts up, then steps aside once the interface is ready"],
@@ -32,6 +32,7 @@ const TABLE = {
 	"group.status": ["状态", "Status"],
 
 	"kind.recipe": ["生成式", "Generated"],
+	"kind.photo": ["内置插画", "Bundled illustration"],
 	"kind.image": ["本地图片", "Local image"],
 	"kind.url": ["图片地址", "Image URL"],
 	"kind.gradient": ["渐变", "Gradient"],
@@ -158,7 +159,7 @@ const TABLE = {
 	// over whatever is showing (at half strength for a photograph, which already
 	// has its own texture). The hint has to say so, or the slider reads as broken
 	// on a custom photo.
-	"appearance.tuning.hint": ["色相和柔和度只改变内置壁纸；颗粒对所有壁纸都生效，用在照片上只有一半力度", "Hue and softness only affect the built-in wallpapers; grain applies to all of them, at half strength on photos"],
+	"appearance.tuning.hint": ["色相和柔和度只作用于「弥散」和「晨雾」这两张生成式壁纸，内置插画不受影响；颗粒对所有壁纸都生效，用在插画上只有一半力度", "Hue and softness only affect the two generated wallpapers, Drift and Mist — the bundled illustrations ignore them. Grain applies to everything, at half strength on illustrations"],
 
 	// The nine cells of the position grid carry no visible text — the grid says
 	// it. These are the accessible names, so they still belong in the dictionary.

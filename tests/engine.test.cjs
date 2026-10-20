@@ -123,10 +123,10 @@ function veilAlpha(document) {
 
 test("itemToBackground turns a recipe into a gradient plus a stable identity", () => {
 	const tuning = { hue: 0, softness: 0.5, grain: 0.35 };
-	const a = itemToBackground({ kind: "recipe", ref: "aurora", seed: "s1" }, tuning);
-	const b = itemToBackground({ kind: "recipe", ref: "aurora", seed: "s1" }, tuning);
+	const a = itemToBackground({ kind: "recipe", ref: "drift", seed: "s1" }, tuning);
+	const b = itemToBackground({ kind: "recipe", ref: "drift", seed: "s1" }, tuning);
 	assert.equal(a.image, b.image, "the same seed produced a different picture");
-	const c = itemToBackground({ kind: "recipe", ref: "aurora", seed: "s2" }, tuning);
+	const c = itemToBackground({ kind: "recipe", ref: "drift", seed: "s2" }, tuning);
 	assert.notEqual(a.image, c.image, "a different seed produced the same picture");
 	assert.ok(a.image.indexOf("gradient") >= 0);
 	assert.ok(a.luminance >= 0 && a.luminance <= 1);
@@ -313,7 +313,7 @@ test("a new picture cross-fades, a tuning change does not", () => {
 
 	// A different picture does cross-fade, onto the other slot.
 	env.store.update((draft) => {
-		draft.single = { ...draft.single, ref: "dune" };
+		draft.single = { ...draft.single, ref: "mist" };
 		return draft;
 	});
 	env.engine.render();
@@ -325,9 +325,9 @@ test("a rotation step cross-fades and advances the cursor", () => {
 	const env = makeEngine();
 	env.store.update((draft) => {
 		draft.playlist = [
-			{ id: "r1", kind: "recipe", ref: "aurora", seed: "s1" },
-			{ id: "r2", kind: "recipe", ref: "dune", seed: "s2" },
-			{ id: "r3", kind: "recipe", ref: "aurora", seed: "s3" }
+			{ id: "r1", kind: "recipe", ref: "drift", seed: "s1" },
+			{ id: "r2", kind: "recipe", ref: "mist", seed: "s2" },
+			{ id: "r3", kind: "recipe", ref: "drift", seed: "s3" }
 		];
 		draft.mode = "rotation";
 		draft.schedule = { ...draft.schedule, order: "sequential" };
@@ -346,7 +346,7 @@ test("a rotation step cross-fades and advances the cursor", () => {
 test("shuffle visits every entry before repeating one", () => {
 	const env = makeEngine();
 	env.store.update((draft) => {
-		draft.playlist = Array.from({ length: 5 }, (_, i) => ({ id: `r${i}`, kind: "recipe", ref: "aurora", seed: `s${i}` }));
+		draft.playlist = Array.from({ length: 5 }, (_, i) => ({ id: `r${i}`, kind: "recipe", ref: "drift", seed: `s${i}` }));
 		draft.mode = "rotation";
 		draft.schedule = { ...draft.schedule, order: "shuffle" };
 		return draft;
@@ -392,7 +392,10 @@ test("turning the readability floor off honours the user's alpha exactly", () =>
 test("autoDim lifts the wash on a busier picture", () => {
 	const env = makeEngine();
 	env.store.update((draft) => {
-		draft.single = { ...draft.single, kind: "recipe", ref: "starfield" }; // complexity 0.55
+		// The brightest built-in (complexity 0.6) against the calmest one (0.2):
+		// this is the pair the automatic lift exists for — a picture with a sunset
+		// sky behind it against a pale mist.
+		draft.single = { ...draft.single, kind: "recipe", ref: "whale-sunset" };
 		draft.wash = { ...draft.wash, opacity: 0.3, autoDim: true, readability: false };
 		return draft;
 	});
@@ -409,10 +412,14 @@ test("autoDim lifts the wash on a busier picture", () => {
 	env.engine.dispose();
 });
 
-test("the grain tile is generated, and custom pictures get half of it", () => {
+test("the grain tile is generated, generated surfaces take it whole, pictures take half", () => {
 	const env = makeEngine();
 	env.store.update((draft) => {
 		draft.tuning = { ...draft.tuning, grain: 1 };
+		// Pinned, not inherited: the default wallpaper is one of the bundled
+		// illustrations now, so a test that reads "whatever is current" would be
+		// measuring a picture in the branch meant to be the generated baseline.
+		draft.single = { ...draft.single, kind: "recipe", ref: "drift", seed: "default" };
 		return draft;
 	});
 	env.engine.start();
@@ -420,13 +427,26 @@ test("the grain tile is generated, and custom pictures get half of it", () => {
 	const recipeOpacity = Number(grain.style.opacity);
 	assert.ok(recipeOpacity > 0, "grain was not applied to a recipe");
 
+	// A bundled illustration is a picture even though it is a built-in, so it
+	// follows the same rule a user's own photo does.
+	env.store.update((draft) => {
+		draft.single = { ...draft.single, kind: "recipe", ref: "whale-sunset", seed: "default" };
+		return draft;
+	});
+	env.engine.render();
+	const photoOpacity = Number(layers(env.document, "grain")[0].style.opacity);
+	assert.ok(photoOpacity < recipeOpacity, "a picture got the full grain strength");
+
+	// A gradient is a generated surface with no texture of its own — half grain
+	// would be a rule about "things that are not recipes" rather than about
+	// "things that already have texture".
 	env.store.update((draft) => {
 		draft.single = { ...draft.single, kind: "gradient", ref: "linear-gradient(90deg, #101010 0%, #202020 100%)" };
 		return draft;
 	});
 	env.engine.render();
-	const customOpacity = Number(layers(env.document, "grain")[0].style.opacity);
-	assert.ok(customOpacity < recipeOpacity, "a custom picture got the full grain strength");
+	const gradientOpacity = Number(layers(env.document, "grain")[0].style.opacity);
+	assert.equal(gradientOpacity, recipeOpacity, "a gradient should get the full grain strength");
 	env.engine.dispose();
 });
 
@@ -528,8 +548,8 @@ test("a paused rotation does not advance on a timer", () => {
 	const env = makeEngine();
 	env.store.update((draft) => {
 		draft.playlist = [
-			{ id: "r1", kind: "recipe", ref: "aurora", seed: "s1" },
-			{ id: "r2", kind: "recipe", ref: "dune", seed: "s2" }
+			{ id: "r1", kind: "recipe", ref: "drift", seed: "s1" },
+			{ id: "r2", kind: "recipe", ref: "mist", seed: "s2" }
 		];
 		draft.mode = "rotation";
 		draft.paused = true;

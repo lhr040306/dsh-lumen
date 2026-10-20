@@ -316,20 +316,47 @@ test("clicking a recipe chip writes the wallpaper through to the store", () => {
 test("the current recipe is marked in the chip strip", () => {
 	const { panel, store } = makePanel();
 	store.update((draft) => {
-		draft.single = { ...draft.single, kind: "recipe", ref: "dune" };
+		draft.single = { ...draft.single, kind: "recipe", ref: "mist" };
 		return draft;
 	});
 	panel.sync();
 	const on = byClass(panel.el, "lumen-chip").filter((chip) => chip.classList.contains("is-on"));
 	assert.equal(on.length, 1, `expected exactly one marked chip, found ${on.length}`);
-	assert.equal(on[0].dataset.recipe, "dune");
+	assert.equal(on[0].dataset.recipe, "mist");
+	panel.destroy();
+});
+
+test("an illustration hides the shake control and claims no seed", () => {
+	// "Shake" means "same recipe, fresh parameters". An illustration has no
+	// parameters, so the control is hidden rather than left there doing nothing —
+	// and the hero stops advertising a seed it does not use.
+	const { panel, store, t } = makePanel({ setup: (s) => {
+		s.update((draft) => {
+			draft.single = { ...draft.single, kind: "recipe", ref: "drift", seed: "s7" };
+			return draft;
+		});
+	} });
+	panel.sync();
+	const shakeButton = () => byClass(panel.el, "lumen-btn").find((el) => el.textContent === t("hero.shake"));
+	assert.ok(shakeButton(), "the shake control is missing on a generated recipe");
+	assert.notEqual(shakeButton().style.display, "none", "the shake control was hidden on a generated recipe");
+
+	store.update((draft) => {
+		draft.single = { ...draft.single, ref: "whale-sunset", seed: "s7" };
+		return draft;
+	});
+	panel.sync();
+	assert.equal(shakeButton().style.display, "none", "an illustration still offers a shake");
+	const heroSub = byClass(panel.el, "lumen-hero-sub")[0];
+	assert.equal(textOf(heroSub), t("kind.photo"));
+	assert.ok(textOf(byClass(panel.el, "lumen-hero-name")[0]).indexOf("s7") < 0, "an illustration printed a seed");
 	panel.destroy();
 });
 
 test("enabling rotation switches the mode and asks the engine to reschedule", () => {
 	const { panel, store, engine } = makePanel();
 	store.update((draft) => {
-		draft.playlist = [{ id: "r1", kind: "recipe", ref: "aurora", seed: "s1" }];
+		draft.playlist = [{ id: "r1", kind: "recipe", ref: "drift", seed: "s1" }];
 		return draft;
 	});
 	panel.sync();
@@ -346,7 +373,7 @@ test("enabling rotation switches the mode and asks the engine to reschedule", ()
 	assert.ok(engine.calls.reschedule > before, "the schedule was not re-armed");
 	// Enabling rotation adopts the entry the user is looking at, so the picture
 	// does not jump on the first tick.
-	assert.equal(store.getState().single.ref, "aurora");
+	assert.equal(store.getState().single.ref, "drift");
 	panel.destroy();
 });
 
@@ -354,7 +381,7 @@ test("a wallpaper change is confirmed with a toast, and the toast leaves with th
 	// "It worked" is the one thing a panel this tall cannot say with a banner at
 	// the top: the user is looking at the page, not at the panel.
 	const { panel, t } = makePanel();
-	const chip = byClass(panel.el, "lumen-chip").find((el) => el.dataset.recipe === "dune");
+	const chip = byClass(panel.el, "lumen-chip").find((el) => el.dataset.recipe === "mist");
 	assert.ok(chip, "the ember chip was not rendered");
 	chip.dispatch("click", {});
 
@@ -401,7 +428,7 @@ test("an empty playlist offers a one-click fill with the built-in wallpapers", (
 	// turns it into a working rotation over the plugin's own designs.
 	const { panel, store, engine, t } = makePanel();
 	store.update((draft) => {
-		draft.single = { ...draft.single, kind: "recipe", ref: "dune" };
+		draft.single = { ...draft.single, kind: "recipe", ref: "mist" };
 		return draft;
 	});
 	const button = walk(panel.el).find((el) => el.nodeType === 1 && el.tagName === "BUTTON" && textOf(el) === t("rotation.seed"));
@@ -416,7 +443,7 @@ test("an empty playlist offers a one-click fill with the built-in wallpapers", (
 	assert.ok(engine.calls.reschedule > before, "the schedule was not re-armed");
 	// The wallpaper the user was looking at is not replaced in `single`: turning
 	// the rotation back off has to return it.
-	assert.equal(state.single.ref, "dune", "the fill overwrote the single wallpaper");
+	assert.equal(state.single.ref, "mist", "the fill overwrote the single wallpaper");
 	// The rows are deletable, so the fill is an offer rather than a lock-in.
 	assert.equal(byClass(panel.el, "lumen-list-item").length, RECIPES.length);
 	panel.destroy();
@@ -431,7 +458,7 @@ test("the playlist renders one row per entry and an empty state when there is no
 
 	store.update((draft) => {
 		draft.playlist = [
-			{ id: "a1", kind: "recipe", ref: "aurora", seed: "s1" },
+			{ id: "a1", kind: "recipe", ref: "drift", seed: "s1" },
 			{ id: "b2", kind: "gradient", ref: "linear-gradient(90deg, #000 0%, #fff 100%)", seed: "default" }
 		];
 		draft.mode = "rotation";
@@ -449,8 +476,8 @@ test("removing a playlist entry is applied to the store", () => {
 	const { panel, store } = makePanel();
 	store.update((draft) => {
 		draft.playlist = [
-			{ id: "a1", kind: "recipe", ref: "aurora", seed: "s1" },
-			{ id: "b2", kind: "recipe", ref: "dune", seed: "s2" }
+			{ id: "a1", kind: "recipe", ref: "drift", seed: "s1" },
+			{ id: "b2", kind: "recipe", ref: "mist", seed: "s2" }
 		];
 		draft.mode = "rotation";
 		return draft;
@@ -472,9 +499,9 @@ test("reordering a playlist entry moves it and keeps the cursor sensible", () =>
 	const { panel, store } = makePanel();
 	store.update((draft) => {
 		draft.playlist = [
-			{ id: "a1", kind: "recipe", ref: "aurora", seed: "s1" },
-			{ id: "b2", kind: "recipe", ref: "dune", seed: "s2" },
-			{ id: "c3", kind: "recipe", ref: "aurora", seed: "s3" }
+			{ id: "a1", kind: "recipe", ref: "drift", seed: "s1" },
+			{ id: "b2", kind: "recipe", ref: "mist", seed: "s2" },
+			{ id: "c3", kind: "recipe", ref: "drift", seed: "s3" }
 		];
 		draft.mode = "rotation";
 		draft.cursor = 1;
@@ -498,7 +525,7 @@ test("the pause control only appears useful when there is a rotation", () => {
 	assert.equal(pause().disabled, true, "pausing a fixed wallpaper is meaningless and should be disabled");
 
 	store.update((draft) => {
-		draft.playlist = [{ id: "r1", kind: "recipe", ref: "aurora", seed: "s1" }];
+		draft.playlist = [{ id: "r1", kind: "recipe", ref: "drift", seed: "s1" }];
 		draft.mode = "rotation";
 		return draft;
 	});
@@ -515,7 +542,7 @@ test("the pause control only appears useful when there is a rotation", () => {
 test("a schedule change re-arms the timer and is persisted", () => {
 	const { panel, store, engine } = makePanel();
 	store.update((draft) => {
-		draft.playlist = [{ id: "r1", kind: "recipe", ref: "aurora", seed: "s1" }];
+		draft.playlist = [{ id: "r1", kind: "recipe", ref: "drift", seed: "s1" }];
 		draft.mode = "rotation";
 		return draft;
 	});
@@ -579,7 +606,7 @@ test("out-of-range schedule input is normalised before it reaches the store", ()
 test("the panel follows the store rather than owning a copy", () => {
 	const { panel, store } = makePanel();
 	store.update((draft) => {
-		draft.single = { ...draft.single, kind: "recipe", ref: "aurora", seed: "s9" };
+		draft.single = { ...draft.single, kind: "recipe", ref: "drift", seed: "s9" };
 		return draft;
 	});
 	// No explicit sync: the panel subscribes.
@@ -625,9 +652,13 @@ test("the diagnostics block reports a degraded persistence channel", async () =>
 });
 
 test("itemLabel names each kind of entry in both languages", () => {
-	assert.equal(itemLabel({ kind: "recipe", ref: "aurora", seed: "default" }, "zh"), "极光");
-	assert.equal(itemLabel({ kind: "recipe", ref: "aurora", seed: "default" }, "en"), "Aurora");
-	assert.equal(itemLabel({ kind: "recipe", ref: "aurora", seed: "s3" }, "en"), "Aurora · s3");
+	assert.equal(itemLabel({ kind: "recipe", ref: "drift", seed: "default" }, "zh"), "弥散");
+	assert.equal(itemLabel({ kind: "recipe", ref: "drift", seed: "default" }, "en"), "Drift");
+	assert.equal(itemLabel({ kind: "recipe", ref: "drift", seed: "s3" }, "en"), "Drift · s3");
+	// An illustration has no variations, so it never grows a seed suffix — the
+	// hidden "shake" button and the label have to agree about that.
+	assert.equal(itemLabel({ kind: "recipe", ref: "whale-sunset", seed: "s3" }, "en"), "Dusk");
+	assert.equal(itemLabel({ kind: "recipe", ref: "whale-sunset", seed: "s3" }, "zh"), "黄昏");
 	assert.equal(itemLabel({ kind: "url", ref: "https://cdn.example.com/a.jpg", seed: "default" }, "en"), "cdn.example.com");
 	assert.equal(itemLabel({ kind: "gradient", ref: "linear-gradient(#000 0%, #fff 100%)", seed: "default" }, "en"), "Gradient");
 	assert.equal(itemLabel({ kind: "gradient", ref: "linear-gradient(#000 0%, #fff 100%)", seed: "default" }, "zh"), "渐变");

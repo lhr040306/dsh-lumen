@@ -1,7 +1,7 @@
 {
   "name": "dsh-lumen",
-  "version": "1.1.0",
-  "description": "DeepSeek Harness 流转壁纸插件（Lumen）：5 套纯程序化生成的弥散光壁纸 + 本地图/URL/渐变自定义 + 轮播调度器（按间隔 / 整点 / 每日 / 每次会话自动换图，带交叉淡入），外加一段随包内置、装好即默认启用的开屏短片。壁纸零图片素材、零版权风险，纯原生 token 实现。Wallpaper rotation for DSH with procedurally generated wallpapers, plus a bundled splash clip that is on by default.",
+  "version": "1.2.0",
+  "description": "DeepSeek Harness 流转壁纸插件（Lumen）：2 套纯程序化生成的弥散光壁纸 + 4 张随包内置插画 + 本地图/URL/渐变自定义 + 轮播调度器（按间隔 / 整点 / 每日 / 每次会话自动换图，带交叉淡入），外加一段随包内置、装好即默认启用的开屏短片。生成式壁纸零图片素材，插画由宿主本机路由送出、不出网。Wallpaper rotation for DSH with two procedurally generated designs, four bundled illustrations, plus a bundled splash clip that is on by default.",
   "license": "MIT",
   "repository": {
     "type": "git",
