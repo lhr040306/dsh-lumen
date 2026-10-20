@@ -1,6 +1,6 @@
 "use strict";
 /**
- * The built-in wallpaper library — seven recipes, zero image assets.
+ * The built-in wallpaper library — five recipes, zero image assets.
  *
  * WHY GENERATED INSTEAD OF SHIPPED PICTURES
  *
@@ -272,78 +272,6 @@ const RECIPES = [
 			return { layers, base: tone(0.9, 0.036, h + 4) };
 		}
 	},
-	{
-		id: "glacier",
-		name: { zh: "冰川", en: "Glacier" },
-		scheme: "light",
-		tags: ["cool", "facet"],
-		defaultSoftness: 0.44,
-		defaultGrain: 0.22,
-		complexity: 0.34,
-		build(p, rng) {
-			const h = 204 + p.hue;
-			const soft = self(0.44, p.softness);
-			const layers = [];
-			for (let i = 0; i < 3; i += 1) {
-				// Tight angular wedges: the "facet" character that separates this
-				// recipe from `mist`'s wide soft veils.
-				const angle = rng.range(96, 264);
-				layers.push(
-					linear(angle, [
-						`${withAlpha(tone(0.9 - i * 0.04, 0.03, h + i * 16), 0)} 0%`,
-						`${withAlpha(tone(0.93 - i * 0.035, 0.032, h + i * 16), rng.range(0.4, 0.66))} ${n(rng.range(30, 58))}%`,
-						`${withAlpha(tone(0.85 - i * 0.03, 0.034, h + i * 16 - 8), 0)} ${n(rng.range(70, 98))}%`
-					])
-				);
-			}
-			layers.push(
-				radial({
-					x: rng.range(30, 70),
-					y: rng.range(8, 30),
-					rx: 66 * (0.7 + soft * 0.7),
-					ry: 40 * (0.7 + soft * 0.7),
-					color: tone(0.99, 0.012, h + 20),
-					alpha: 0.56,
-					fade: 100
-				})
-			);
-			layers.push(halo(0.32, 38));
-			return { layers, base: tone(0.92, 0.026, h + 2) };
-		}
-	},
-	{
-		id: "paper",
-		name: { zh: "纸纹", en: "Paper" },
-		scheme: "light",
-		tags: ["paper", "neutral"],
-		defaultSoftness: 0.5,
-		defaultGrain: 0.62,
-		complexity: 0.14,
-		build(p, rng) {
-			const chromaScale = 1 - Math.min(1, Math.abs(p.hue) / 90);
-			const h = 68 + p.hue;
-			const soft = self(0.5, p.softness);
-			// Intentionally almost featureless: the grain overlay does the work,
-			// and this recipe is what "just give me a neutral warm backdrop"
-			// means. Its complexity is the lowest of the set for that reason.
-			const layers = [
-				linear(rng.range(120, 200), [
-					`${withAlpha(tone(0.95, 0.016 * chromaScale, h), 0.9)} 0%`,
-					`${withAlpha(tone(0.9, 0.02 * chromaScale, h), 0.85)} 100%`
-				]),
-				radial({
-					x: rng.range(20, 80),
-					y: rng.range(16, 60),
-					rx: 76 * (0.7 + soft * 0.7),
-					ry: 58 * (0.7 + soft * 0.7),
-					color: tone(0.99, 0.01, h + 8),
-					alpha: 0.34,
-					fade: 100
-				})
-			];
-			return { layers, base: tone(0.93, 0.018, h) };
-		}
-	}
 ];
 
 /**

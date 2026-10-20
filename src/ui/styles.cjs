@@ -39,6 +39,21 @@ const PANEL_CSS = `
   /* Depths and hairlines. Also untokenised, and also stated once. */
   --lumen-shadow:0 1px 3px rgba(0,0,0,.35);
   --lumen-shadow-soft:0 1px 3px rgba(0,0,0,.3);
+  /* The empty part of a slider track and the filled circle that rides on it.
+     Both derived from tokens already resolved above, so a themed panel gets a
+     themed slider instead of a fixed grey one. */
+  --lumen-track:var(--lumen-border-2);
+  --lumen-knob:#fff;
+  /* The lift under a slider thumb and a switch knob. A raised control needs a
+     shadow or it reads as painted on, and on a light theme a white knob on a
+     pale track is invisible without one — which is why the hairline ring is
+     12% rather than the 4% that would vanish over a white card. */
+  --lumen-knob-shadow:0 1px 2px rgba(0,0,0,.28),0 0 0 1px rgba(0,0,0,.12);
+  /* Where the filled part of a slider track stops. This one is written from JS
+     on every paint rather than read from a token, and it is declared anyway so
+     the stylesheet has exactly one place that names the variable it animates —
+     an undeclared one would be invisible to any search for "where is this set". */
+  --lumen-fill:0%;
   --lumen-hairline:inset 0 0 0 1px rgba(255,255,255,.03);
   --lumen-radius:10px;
   color:var(--lumen-text);
@@ -49,10 +64,10 @@ const PANEL_CSS = `
   gap:14px;
   padding:2px 0 12px;
 }
-.lumen-group{display:flex;align-items:baseline;gap:8px;margin-top:6px;}
+.lumen-group{display:flex;align-items:baseline;gap:8px;margin-top:6px;flex-wrap:wrap;}
 .lumen-group:first-child{margin-top:0;}
 .lumen-group-title{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--lumen-text-2);}
-.lumen-group-hint{font-size:11.5px;color:var(--lumen-text-3);}
+.lumen-group-hint{font-size:12px;line-height:1.5;color:var(--lumen-text-2);flex:1 1 auto;min-width:0;}
 .lumen-card{
   border:1px solid var(--lumen-border);
   border-radius:var(--lumen-radius);
@@ -63,9 +78,15 @@ const PANEL_CSS = `
   gap:9px;
 }
 .lumen-row{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:26px;}
-.lumen-row-label{display:flex;flex-direction:column;gap:1px;min-width:0;}
-.lumen-row-title{font-size:12.5px;color:var(--lumen-text);}
-.lumen-row-hint{font-size:11px;color:var(--lumen-text-3);}
+.lumen-row-label{display:flex;flex-direction:column;gap:3px;min-width:0;}
+.lumen-row-title{font-size:12.5px;font-weight:500;color:var(--lumen-text);}
+/* Secondary text at a readable size.
+   These lines carry the sentence that explains what a control does, and they
+   used to be 11px in the tertiary colour — which on a light theme is the same
+   grey as the disabled state, so the explanation read as "unavailable" rather
+   than "here is how this works". 12px/1.5 in the secondary colour keeps the
+   hierarchy (weight does that job now) while staying legible. */
+.lumen-row-hint{font-size:12px;line-height:1.5;color:var(--lumen-text-2);max-width:52ch;}
 .lumen-row-control{display:flex;align-items:center;gap:8px;flex:0 0 auto;}
 .lumen-row.is-stack{flex-direction:column;align-items:stretch;}
 .lumen-row.is-stack .lumen-row-control{flex:1 1 auto;}
@@ -123,20 +144,42 @@ const PANEL_CSS = `
 }
 .lumen-swatch.is-large{width:100%;height:100%;border-radius:0;border:none;box-shadow:none;}
 
-.lumen-slider{display:flex;align-items:center;gap:9px;min-width:170px;}
+.lumen-slider{display:flex;align-items:center;gap:10px;min-width:180px;}
+/* The track is painted as a two-stop gradient, and --lumen-fill (set from JS
+   on every paint) is where the second stop sits. That is what gives the control
+   a filled portion without a second element or a wrapping div: a bare 3px line
+   with a dot on it has no "how much" in it at all, and the value was only
+   readable from the number beside it. */
 .lumen-slider-input{
-  -webkit-appearance:none;appearance:none;height:3px;border-radius:2px;
-  background:var(--lumen-border-2);outline:none;flex:1 1 auto;min-width:96px;cursor:pointer;
+  -webkit-appearance:none;appearance:none;
+  height:18px;background:transparent;flex:1 1 auto;min-width:96px;cursor:pointer;margin:0;
+}
+.lumen-slider-input::-webkit-slider-runnable-track{
+  height:4px;border-radius:999px;
+  background:linear-gradient(90deg,var(--lumen-accent) var(--lumen-fill,0%),var(--lumen-track) var(--lumen-fill,0%));
 }
 .lumen-slider-input::-webkit-slider-thumb{
-  -webkit-appearance:none;appearance:none;width:13px;height:13px;border-radius:50%;
-  background:var(--lumen-accent);border:none;cursor:pointer;
-  box-shadow:var(--lumen-shadow);
+  -webkit-appearance:none;appearance:none;
+  box-sizing:border-box;width:16px;height:16px;border-radius:50%;
+  background:var(--lumen-knob,#fff);
+  border:2px solid var(--lumen-accent);
+  margin-top:-6px;
+  box-shadow:var(--lumen-knob-shadow);
+  transition:transform .12s ease,box-shadow .12s ease;
 }
+.lumen-slider-input:hover::-webkit-slider-thumb{transform:scale(1.08);}
+.lumen-slider-input:active::-webkit-slider-thumb{transform:scale(1.16);}
+/* The ring goes on the input, not on the thumb: a box-shadow on a pseudo-element
+   cannot borrow the accent's alpha, and a solid ring around a 16px dot reads as
+   a second border. An outline on the 18px hit area is both visible and cheap. */
+.lumen-slider-input:focus-visible{outline:2px solid var(--lumen-accent);outline-offset:3px;border-radius:999px;}
+.lumen-slider-input::-moz-range-track{height:4px;border-radius:999px;background:var(--lumen-track);}
+.lumen-slider-input::-moz-range-progress{height:4px;border-radius:999px;background:var(--lumen-accent);}
 .lumen-slider-input::-moz-range-thumb{
-  width:13px;height:13px;border-radius:50%;background:var(--lumen-accent);border:none;cursor:pointer;
+  box-sizing:border-box;width:16px;height:16px;border-radius:50%;
+  background:var(--lumen-knob,#fff);border:2px solid var(--lumen-accent);cursor:pointer;
 }
-.lumen-slider-value{font-variant-numeric:tabular-nums;font-size:11.5px;color:var(--lumen-text-2);min-width:52px;text-align:right;}
+.lumen-slider-value{font-variant-numeric:tabular-nums;font-size:12px;font-weight:500;color:var(--lumen-text-2);min-width:52px;text-align:right;}
 
 .lumen-segmented{display:inline-flex;border:1px solid var(--lumen-border);border-radius:8px;overflow:hidden;background:var(--lumen-surface);}
 .lumen-seg{
@@ -147,19 +190,30 @@ const PANEL_CSS = `
 .lumen-seg:hover{background:var(--lumen-hover);color:var(--lumen-text);}
 .lumen-seg.is-on{background:var(--lumen-accent);color:var(--lumen-on-accent);}
 
+/* 38x22 with an 18px knob: a 2px ring of track on every side.
+   The previous 34x19 / 15px pair left 2px above and below but only 2px either
+   side of a 15px dot, which at this size reads as a rounded square rather than
+   a switch — the shape was doing the work the silhouette should have done. */
 .lumen-toggle{position:relative;display:inline-flex;cursor:pointer;}
 .lumen-toggle-input{position:absolute;opacity:0;width:0;height:0;}
 .lumen-toggle-track{
-  width:34px;height:19px;border-radius:10px;background:var(--lumen-border-2);
-  display:inline-flex;align-items:center;padding:2px;transition:background .16s ease;
+  box-sizing:border-box;
+  width:38px;height:22px;border-radius:999px;
+  background:var(--lumen-track);
+  box-shadow:inset 0 0 0 1px var(--lumen-border-2);
+  display:inline-flex;align-items:center;padding:2px;
+  transition:background .18s ease,box-shadow .18s ease;
 }
 .lumen-toggle-knob{
-  width:15px;height:15px;border-radius:50%;background:var(--lumen-on-accent);
-  transform:translateX(0);transition:transform .16s ease;
-  box-shadow:var(--lumen-shadow-soft);
+  width:18px;height:18px;border-radius:50%;background:var(--lumen-knob);
+  transform:translateX(0);
+  box-shadow:var(--lumen-knob-shadow);
+  transition:transform .18s cubic-bezier(.32,.72,.36,1);
 }
-.lumen-toggle-input:checked + .lumen-toggle-track{background:var(--lumen-accent);}
-.lumen-toggle-input:checked + .lumen-toggle-track .lumen-toggle-knob{transform:translateX(15px);}
+.lumen-toggle-input:checked + .lumen-toggle-track{background:var(--lumen-accent);box-shadow:inset 0 0 0 1px transparent;}
+.lumen-toggle-input:checked + .lumen-toggle-track .lumen-toggle-knob{transform:translateX(16px);}
+.lumen-toggle:active .lumen-toggle-knob{width:20px;}
+.lumen-toggle:active .lumen-toggle-input:checked + .lumen-toggle-track .lumen-toggle-knob{transform:translateX(14px);}
 .lumen-toggle-input:focus-visible + .lumen-toggle-track{outline:2px solid var(--lumen-accent);outline-offset:2px;}
 
 /* 3x3 position grid. Fixed 18px tracks instead of 1fr + aspect-ratio: the
@@ -204,8 +258,28 @@ const PANEL_CSS = `
   background:var(--lumen-surface-2);border:1px solid var(--lumen-border);color:var(--lumen-text-2);
 }
 .lumen-pill.is-next{background:var(--lumen-accent);color:var(--lumen-on-accent);border-color:transparent;}
-.lumen-note{font-size:11px;color:var(--lumen-text-3);}
+.lumen-note{font-size:11.5px;line-height:1.5;color:var(--lumen-text-2);}
 .lumen-note.is-warn{color:var(--dsw-alias-state-warn-primary,#e0a34a);}
+/* What is currently applied, shown as the thing itself.
+   "96KB" and "picture splash · 96KB" are both answers to "what is in there",
+   and neither of them lets you recognise the picture you picked ten minutes
+   ago. The row is a 46x30 crop of the actual material plus one line of text. */
+.lumen-applied{display:flex;align-items:center;gap:9px;min-width:0;}
+.lumen-applied[hidden]{display:none;}
+.lumen-applied-thumb{
+  flex:0 0 auto;width:46px;height:30px;border-radius:6px;overflow:hidden;position:relative;
+  border:1px solid var(--lumen-border-2);
+  background-color:var(--lumen-surface-2);
+  background-size:cover;background-position:center;background-repeat:no-repeat;
+  box-shadow:var(--lumen-hairline);
+}
+.lumen-applied-thumb > video{display:block;width:100%;height:100%;object-fit:cover;}
+.lumen-applied-text{font-size:11.5px;line-height:1.4;color:var(--lumen-text-2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.lumen-applied-text b{color:var(--lumen-text);font-weight:500;font-variant-numeric:tabular-nums;}
+/* The same row doubles as an error line: when the host cannot be asked what the
+   splash is, the picture is missing for a reason and the text has to say so in
+   the warning colour rather than in the neutral one that means "nothing set". */
+.lumen-applied.is-warn .lumen-applied-text{color:var(--dsw-alias-state-warn-primary,#e0a34a);}
 /* The single message line. Sticky, because the panel is far taller than the
    settings viewport: a refusal reported at the top of the panel while the user
    is looking at the rotation switch is a refusal nobody reads. "top:0" resolves

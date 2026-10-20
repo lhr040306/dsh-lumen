@@ -706,7 +706,13 @@ test("the preview mounts the real host half, routes and all", async (t) => {
 
 	assert.deepEqual(bridge.routes.map((route) => route.path).sort(), ["/lumen/api", "/lumen/splash"]);
 	assert.equal(bridge.effectLabels().length, 2, "a route was registered outside an effect and would outlive dispose");
-	assert.deepEqual(bridge.collectRows(), [], "no splash configured must contribute no rows at all");
+	// A fresh install has no document at all, and the answer is the packaged
+	// clip rather than nothing: the splash ships on, and `splash.source` is what
+	// a user sets to `off` to get out of it.
+	const initial = bridge.collectRows();
+	assert.equal(initial.length, 2, "a fresh install must be covered by the built-in splash");
+	assert.equal(initial[0].kind, "style");
+	assert.ok(!initial[0].text.includes("background-image"), "the built-in splash is a clip, and CSS cannot paint one");
 
 	const media = "media-mount-deadbeef.png";
 	fs.mkdirSync(path.join(home, "lumen-media"), { recursive: true });
@@ -723,7 +729,9 @@ test("the preview mounts the real host half, routes and all", async (t) => {
 	// A name that fails the shape check is not a splash. Written by hand rather
 	// than through an upload, which is exactly the case the read-side revalidation
 	// exists for.
-	fs.writeFileSync(path.join(home, "lumen.json"), JSON.stringify({ "splash.media": "../../etc/passwd", "dsh-lumen:schema-version": "1" }));
+	// `splash.source: custom` is what makes this the user's own clip rather than
+	// a fresh install, so the name is the only thing that can decide the answer.
+	fs.writeFileSync(path.join(home, "lumen.json"), JSON.stringify({ "splash.media": "../../etc/passwd", "splash.source": "custom", "dsh-lumen:schema-version": "1" }));
 	assert.deepEqual(bridge.collectRows(), [], "the host half served a name that never came from its own generator");
 
 	bridge.dispose();

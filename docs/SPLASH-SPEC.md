@@ -1,6 +1,6 @@
 # 开屏规格 · dsh-lumen
 
-这份文档描述**已经实现并测试过的**开屏协议：宿主半边的媒体存储、三条路由、启动遮罩与它的兜底守卫，以及浏览器半边（`src/splash.cjs`）如何接住视频。
+这份文档描述**已经实现并测试过的**开屏协议：宿主半边的媒体存储、四条路由、随包内置的那段短片、启动遮罩与它的兜底守卫，以及浏览器半边（`src/splash.cjs`）如何接住视频。
 
 两岸都在这里，因为它们是一条链路：宿主决定"页面里有一层黑"，浏览器确定"黑什么时候可以走"。所以这里写下的每一个形状，都是代码里此刻真实存在、并由 `tests/host.test.cjs` / `tests/cover.test.cjs` / `tests/splash.test.cjs` 钉住的形状；没有任何"计划中"的字段被写成"已实现"。
 
@@ -49,6 +49,30 @@
 **不抬 schema 版本。** `splash.media` 是同一张扁平 map 上的第 14 个偏好键，仍在 `MAX_STATE_KEYS`（64）之内；旧版构建读到一个不认识的键会**忽略**它——这正是扁平字符串 map 要换来的性质。
 
 ⚠️ 但这条性质**只在读路径上成立**。写路径必须显式地也只删自己写的键形状，否则一次保存就会把别的写入者存的东西清掉。客户端那一侧的实现见 `src/store.cjs` 的 `buildPatch`；那里有一对互补的测试钉住这个语义。
+
+### 2.5 `splash.source`：开屏从哪来
+
+| 属性 | 值 |
+| --- | --- |
+| 键 | `splash.source` |
+| 值 | `"builtin"` / `"custom"` / `"off"` |
+| 缺省 | 键不存在 = 看 `splash.media`：有就用它，没有就用**内置短片** |
+| 非法值 | 视同缺省（不是报错，也不是"关闭"） |
+
+之所以不是"用 `splash.media` 的一个魔法值表示关闭"：那个字段的整条契约是"一个能通过 `MEDIA_NAME_SHAPE` 的文件名"，往里塞哨兵值就是把两种含义塞进一个形状检查里。
+
+解析只有一个地方（`resolveSplash`），它把四种情形折叠成一个答案：
+
+| `splash.source` | `splash.media` | 结果 |
+| --- | --- | --- |
+| `"builtin"` | 任意 | 包内短片 |
+| `"custom"` | 合法名字 | 媒体目录里那个文件 |
+| `"custom"` | 缺省 / 非法 | **没有开屏**（不偷偷回退到内置：用户自己的选择坏了，不等于他没选过） |
+| `"off"` | 任意 | 没有开屏 |
+| 缺省 | 合法名字 | 媒体目录里那个文件（1.0.x 的升级路径） |
+| 缺省 | 缺省 / 非法 | 包内短片（全新安装） |
+
+`"off"` 是**写死的一句话**，不是"删掉键就算关"：删键等于回到缺省，而缺省就是内置短片——那样「关闭开屏」按第二次就会自己打开。
 
 ---
 
@@ -169,6 +193,14 @@ media-<36 进制时间戳>-<8 位十六进制>.<扩展名>
 
 > 非 `.part` 的孤儿文件**不做自动回收**：另一个窗口可能刚写完文件、还没写完状态，此时回收会删掉一个即将被引用的文件。
 
+### 4.7 切回内置
+
+`POST /lumen/splash/builtin`，无请求体。成功 `200`，`value = { source: "builtin", kind: "video" }`；包内没有那段短片时 `404 no-builtin`。
+
+语义是**替换**，与上传一致：先改状态、再删用户自己那份文件。开屏任何时刻只有一份，留一个"回不去也用不上"的文件只会变成 §4.6 里那种没人能追溯的孤儿。清掉之后连 `splash.media` 键一起删，所以状态里不会留下一个指向已消失文件的名字。
+
+「关闭」不设单独路由：它就是 `clear`（§4.4），写 `splash.source = "off"`。
+
 ---
 
 ## 五、启动遮罩
@@ -250,11 +282,19 @@ background-position:center;background-size:cover;background-repeat:no-repeat!imp
 
 `keep()` **不是取消定时器**，这一条是刻意的：取消等于把"有界"这个性质交出去。谁调用 `keep()` 谁就欠一次 `lift()`，而如果它没还，30 秒后照样撤罩。视频半边调用的就是 `keep()`（见 §六.3）。
 
-### 5.6 未配置 = 零注入
+### 5.6 关闭 = 零注入
 
-没有 `splash.media` 时 `coverRows` 返回**空数组**，这个插件对文档一个字节都不贡献。
+`splash.source = "off"` 时 `coverRows` 返回**空数组**，这个插件对文档一个字节都不贡献。
 
-这条比"风险很小"强：**一个从不设置开屏的用户，对这套代码的暴露面严格为零。**
+这条比"风险很小"强：**关掉开屏的用户，对这套代码的暴露面严格为零。**
+
+⚠️ 这条曾经写成"未配置 = 零注入"，因为那时候没有出厂默认。现在默认是包内那段短片，于是"从未配置"和"什么都不要"不再是同一件事：前者是全新安装（有开屏），后者是 `"off"`（没有开屏）。保证本身没变，只是触发条件换了名字——`tests/host.test.cjs` 里那条用例也跟着从"no splash configured"改成了"switching the splash off"。
+
+### 5.7 包内短片没装进来时
+
+`builtinMediaPath()` 在进程内 `existsSync` 一次并把结果记下来。包不完整（`files` 少写了 `media`、被裁剪的镜像）时它是 `undefined`，于是 `resolveSplash` 在没有其他选择时返回 `null`——**没有开屏**，而不是"有一个遮罩、下面却没有片子"。这种情况下用户看到的是外壳自己的启动画面。
+
+那条 `existsSync` 每个进程只跑一次，因为包目录在进程生命周期里是不变的；而它跑在 index 请求的注入路径上，这一点很重要（§5.3 的备忘就是为了同一个原因）。
 
 ---
 
@@ -294,7 +334,24 @@ background-position:center;background-size:cover;background-repeat:no-repeat!imp
 
 **每次出口都同时做两件事**：撤层，并 `lift()`。开屏最不可恢复的结局是片子结束了但界面还盖着，所以撤层路径永远顺带撤罩。
 
-### 6.5 层为什么挂在 `document.body` 上
+### 6.5 跳过这一下，归开屏所有
+
+层上任意点击就是跳过，而**面板常常就在层下面那一页**。在点击处理里把层撤掉不会让这次点击重新派发一次，但它会改变**同一个手势**脚下的地面：按在层上的手指可能在刚出现的面板上抬起，浏览器随即在这两点的最近公共祖先上产生一次 `click`；更直接的是第二下——不耐烦地再点一次，而「关闭开屏」恰好就在跳过提示的位置。
+
+这不是假设，而是**实测到的**一次事故：短片从 6 秒换成 4.5 秒后，确认用的那一下点击落在了层已经消失之后，光标下的按钮正好是关闭开屏，于是 `splash.source` 被写成了 `off`。症状是"开屏就是不出现了"，而这恰好是**从外面最诊断不出来**的一类故障——和"插件根本没装"完全同形。
+
+所以撤层之后 `CLICK_THROUGH_MS = 400` 内，`document` 上装一个**捕获阶段**监听，对 `pointerdown/pointerup/mousedown/mouseup/touchstart/touchend/click` 一律 `stopPropagation()` + `preventDefault()`：面板的监听是普通冒泡监听，被拦在目标之前的事件激活不了任何东西。
+
+两个边界同时成立，缺一个都会变成新的 bug：
+
+- **一个手势，不是一个宽限期**：第一声 `click` 一到就撤掉监听，之后的点击属于用户的下一个意图；
+- **只在真的有手势时生效**：`ended` / `error` / 超时撤层不装它。片子自然放完时没有人的手指在里面，此时吃掉下一次点击比它防的那个 bug 更糟。
+
+键盘同理：`Enter` / `Space` 会激活持有焦点的东西，而外壳的启动层可以持有焦点，所以跳过的按键要挡掉它的默认行为。
+
+`dispose()` 和 `dismissClip()` 都会撤掉这个监听——一个留到模块消失之后的捕获监听会悄悄吃掉界面的第一下点击。
+
+### 6.6 层为什么挂在 `document.body` 上
 
 两条独立的理由，任何一条单独都够：
 
@@ -303,7 +360,7 @@ background-position:center;background-size:cover;background-repeat:no-repeat!imp
 
 层序用 `LAYER_Z_INDEX = 2147483647`，即 CSS 能接受的最大值。**取最大值本身就是论证，不是随手填一个够大的数**：一个别的元素不得超过的值，才是唯一压不住的值。这个应用里其它插件的浮层普遍会用很大的数——既有的惯例是"当前弹出的那个东西占最上层"——所以低一档就会在开屏中途被别人的弹窗盖住，而且**只在别人恰好弹东西的那一刻**被盖住，属于最难复现的一类 bug。反向也成立：界面可用时这层**已经不存在**，所以它没有任何东西被永久压住。实测见 §八。
 
-### 6.6 没有遮罩就不播
+### 6.7 没有遮罩就不播
 
 **不注入遮罩的页面，半边不播开屏。** 遮罩和开屏是文档生成时做的**同一个决定**；一个没遮罩的页面就是"这一页送达时还没有开屏"的页面。没有遮罩就没有那块黑让片子落上去，此时开屏只会变成"界面闪一下、然后被一个不会自己走的东西盖住"。面板在这种情况下说的是"重新加载后才会看到"，那句话是真的。
 
@@ -395,13 +452,64 @@ html
 
 ---
 
-## 九、测试映射
+## 九、内置开屏
 
-### 9.1 宿主半边（`tests/host.test.cjs`）
+### 9.1 为什么随包带一段片子
+
+因为**默认值也是产品**。一个壁纸插件装完应该当场看见东西，而"看见"的最短路径不是在设置里找一张图，是启动那一下有一帧漂亮的画面。要求用户先准备素材，等于把第一次成功体验推迟到他恰好有空的时候。
+
+代价必须写在同一段里，否则这段就成了宣传：包体积多 2.0 MB；README 里"零图片素材"的说法从这一版起限定为**壁纸**（壁纸仍然是零素材，开屏不是）。
+
+### 9.2 它和上传的那一份，差别只有三处
+
+| | 上传的 | 内置的 |
+| --- | --- | --- |
+| 位置 | `$DSH_HOME/lumen-media/media-<ts>-<hex>.<ext>` | 包内 `media/splash.mp4` |
+| 名字来源 | 宿主生成 | 固定 tag `builtin.mp4`（**只用于反查 MIME 与 etag，不是磁盘上的文件名**） |
+| 状态里有什么 | `splash.media` = 那个名字 | 没有名字，只有 `splash.source = "builtin"` |
+
+其余**全部共用**：Range 与 416/304、etag、`no-store`、`accept-ranges`、HEAD、遮罩样式、守卫、浏览器半边的探测与播放。两条来源在 `resolveSplash` 之后变成同一个形状（`{source, file, tag}`），所以没有第二条服务路径可以长出第二种 bug。
+
+包路径由 `new URL("../media/splash.mp4", import.meta.url)` 解析，而不是 `process.cwd()`：插件装在哪个目录、外壳从哪个目录启动，都不影响它。从 GitHub 装、从本地目录装、装进 profile 的 `plugins/` 下，都成立。
+
+### 9.3 三种更省事但不采用的做法
+
+**首次启动把包内文件复制到媒体目录。** 看起来最省事——之后什么都不用改。代价是：多一份 2.0 MB 副本；在**启动路径**上写盘（`DSH_HOME` 只读时静默失败，而那时用户已经在等开屏了）；「清除」删掉的是唯一一份，于是"下次启动别再复制一次"需要第二个标记键，而那个键一旦写坏，用户每次启动都得手动关一遍。
+
+**把片子 base64 进状态文件。** 状态文件上限 24 MiB，而且每次写都整份重写。§2.2 已经为壁纸论证过同一条，2.0 MB 的常驻载荷只会更糟。
+
+**让宿主提供媒体库服务。** 没有这样一条公开契约。为一个壁纸插件要求宿主具备媒体服务，会把可安装面砍掉一半——而这不值得，因为文件就在包里。
+
+### 9.4 面板怎么知道正在用的是哪一份
+
+`GET`/`HEAD /lumen/splash/media` 回一个 `x-lumen-splash-source` 头。面板的状态行因此是**宿主的回答**，不是面板里抄的一份常量——抄的那份会在"用户刚切回内置"和"另一个窗口刚上传"之间说假话。
+
+面板上三个出口，语义各是一句话：`选择文件…`（→ `custom`）、`内置开屏`（→ `builtin`，替换语义，见 §4.7）、`关闭开屏`（→ `off`）。
+
+### 9.5 默认开启的边界
+
+默认开启不是"强加"，前提是另外几条同时成立：
+
+- **可跳过**：任意点击或按键立刻结束（§6.4 的出口之一，早于这一版就有）
+- **有界**：8 秒第一帧、120 秒总寿命、解码失败即撤、守卫 10/30 秒
+- **关得掉**：`off` 之后 §5.6 的零注入
+- **说得明白**：面板里有一句话写着"默认启用"——一个用户不知道自己有的功能，迟早会被当成入侵
+
+少任何一条，默认开启都只是"作者喜欢"。
+
+---
+
+## 十、测试映射
+
+### 10.1 宿主半边（`tests/host.test.cjs`）
 
 | 契约 | 测试 |
 | --- | --- |
-| 未配置时零注入 | no splash configured contributes no rows at all |
+| 关掉之后零注入（§5.6） | switching the splash off contributes no rows at all |
+| 全新安装即有内置开屏（§9.1） | a fresh install is covered by the clip the package ships with |
+| 名字坏了回退到内置而不是路径（§2.5） | an unreadable stored name falls back to the built-in clip, not to a path |
+| 切回内置是替换（§4.7） | switching to the built-in clip replaces the user's own, like an upload does |
+| 上传夺取来源 | an upload wins over the built-in clip |
 | 图片开屏由样式表画 | an image cover paints the media itself… |
 | 视频不假装 CSS 能播 | a video cover does not pretend CSS can play a clip |
 | 不用 `dsh-boot-spinner` | the cover hides #root and forces the base colour dark |
@@ -419,7 +527,7 @@ html
 | 围栏覆盖两条前缀 | the splash routes sit behind the same fence |
 | 两岸的媒体类型表一致 | the browser half offers exactly the media types the host accepts |
 
-### 9.2 注入的守卫（`tests/cover.test.cjs`）
+### 10.2 注入的守卫（`tests/cover.test.cjs`）
 
 在 `vm` 里跑**真正被送进文档的那段脚本**，用一个手摇的定时器队列和手动泵动的观察者——这里每一个有意思的问题都是"在那一瞬间发生了什么"，所以不引入真实时钟。
 
@@ -435,23 +543,27 @@ html
 | 连容器都没有 | a document with no container at all yields the screen on the deadline |
 | `keep` 延长而非取消 | keep postpones the deadline instead of cancelling it, and stays bounded |
 
-### 9.3 浏览器半边（`tests/splash.test.cjs`）
+### 10.3 浏览器半边（`tests/splash.test.cjs`）
 
 | 契约 | 测试 |
 | --- | --- |
-| 探测只读类型 | probe reads the host's answer, and treats 404 as 'not set' rather than as a fault |
+| 探测只读类型与来源（§9.4） | probe reads the host's answer, and treats 404 as 'not set' rather than as a fault |
+| 切回内置是一条 POST（§4.7） | switching back to the built-in clip is one POST, and its failure is reported |
 | 探测问对路由、不带体 | probe asks the route the host owns, and asks it without a body |
 | 上传按文件自己的类型 | upload sends the file's own bytes under the file's own type |
 | 上传的错是宿主的错 | upload reports the host's own reason instead of guessing at one |
 | 不支持的类型不上网 | upload refuses a type it was never going to be allowed to send |
 | 清除的两种结果 | clear reports whether there was anything to remove |
-| 无遮罩不播（§6.6） | with no injected cover, nothing is asked and nothing is mounted |
+| 无遮罩不播（§6.7） | with no injected cover, nothing is asked and nothing is mounted |
 | 图片不归它管（§6.1） | a picture is left entirely to the guard, release included |
 | 先 `keep` 再挂层（§6.2） | a clip suspends the guard before it mounts, and reveals on the first frame |
 | 解码失败 | a clip that cannot decode takes the layer down and gives the interface back |
 | 第一帧时限 | a frame that never arrives gives way on its own deadline |
 | 总寿命与第一帧独立（§6.4） | a clip has a total lifetime, however well it plays |
 | 点击与按键 | a click anywhere, or any key, ends the clip early |
+| 跳过不外溢（§6.5） | the click that skipped the clip never reaches the interface underneath |
+| 自然放完不吞点击（§6.5） | a clip that ends by itself leaves the next click alone |
+| 拆除带走手势保护（§6.5） | teardown takes the gesture guard with it |
 | 两者都没来时 | the last resort still runs if the first frame never comes and nothing else fires |
 | 拆除 | dispose takes the layer down and stops listening |
 | 幂等启动 | startCover runs once, however often it is called |

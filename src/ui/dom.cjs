@@ -117,8 +117,20 @@ function slider(options) {
 		}
 	});
 	const format = typeof o.format === "function" ? o.format : (v) => String(v);
+	/**
+	 * Paint the readout and the track's filled portion.
+	 *
+	 * The fill is a CSS custom property rather than a second element: the
+	 * stylesheet draws the track as a two-stop gradient and this only moves the
+	 * stop, so the "how much" is visible without the slider having to know
+	 * anything about colour.
+	 */
 	const paint = (value) => {
 		readout.textContent = format(value);
+		const span = Number(o.max) - Number(o.min);
+		const ratio = span > 0 ? (Number(value) - Number(o.min)) / span : 0;
+		const percent = Math.round(Math.max(0, Math.min(1, ratio)) * 1000) / 10;
+		input.style.setProperty("--lumen-fill", `${percent}%`);
 	};
 	paint(o.value);
 	input.addEventListener("input", () => {

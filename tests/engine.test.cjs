@@ -365,7 +365,7 @@ test("the readability floor raises the wash over a bright picture and is reporte
 	const env = makeEngine();
 	// A light recipe behind a dark theme, with the user asking for a thin wash.
 	env.store.update((draft) => {
-		draft.single = { ...draft.single, kind: "recipe", ref: "paper" };
+		draft.single = { ...draft.single, kind: "recipe", ref: "mist" };
 		draft.wash = { ...draft.wash, opacity: 0.2, autoDim: false, readability: true };
 		return draft;
 	});
@@ -379,7 +379,7 @@ test("the readability floor raises the wash over a bright picture and is reporte
 test("turning the readability floor off honours the user's alpha exactly", () => {
 	const env = makeEngine();
 	env.store.update((draft) => {
-		draft.single = { ...draft.single, kind: "recipe", ref: "paper" };
+		draft.single = { ...draft.single, kind: "recipe", ref: "mist" };
 		draft.wash = { ...draft.wash, opacity: 0.2, autoDim: false, readability: false };
 		return draft;
 	});
@@ -399,7 +399,7 @@ test("autoDim lifts the wash on a busier picture", () => {
 	env.engine.start();
 	const plain = veilAlpha(env.document);
 	env.store.update((draft) => {
-		draft.single = { ...draft.single, ref: "paper" }; // complexity 0.18
+		draft.single = { ...draft.single, ref: "mist" }; // complexity 0.2
 		return draft;
 	});
 	env.engine.render();

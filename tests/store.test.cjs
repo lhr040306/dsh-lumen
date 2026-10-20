@@ -147,7 +147,7 @@ test("the local seed paints before the host answers, and is adopted when the hos
 	const first = makeStore(host, storage);
 	await first.load();
 	first.update((draft) => {
-		draft.single = { ...draft.single, ref: "glacier", seed: "seeded" };
+		draft.single = { ...draft.single, ref: "aurora", seed: "seeded" };
 		return draft;
 	});
 	await first.flush();
@@ -157,7 +157,7 @@ test("the local seed paints before the host answers, and is adopted when the hos
 	const freshHost = createHostFile();
 	const second = makeStore(freshHost, storage);
 	const loaded = await second.load();
-	assert.equal(loaded.single.ref, "glacier", "the seed was not read");
+	assert.equal(loaded.single.ref, "aurora", "the seed was not read");
 	// And the seed was pushed into the empty host file so the next launch is not empty.
 	await second.flush();
 	assert.ok(freshHost.file.has("single"), "the rescued seed never reached the empty host file");
@@ -289,7 +289,7 @@ test("a storage that refuses writes does not break the store", async () => {
 	assert.equal(loaded.mode, "single");
 	assert.equal(store.getHealth().hasStorage, false, "an unusable storage must be reported as absent");
 	store.update((draft) => {
-		draft.single = { ...draft.single, ref: "paper" };
+		draft.single = { ...draft.single, ref: "dune" };
 		return draft;
 	});
 	await store.flush();
@@ -329,7 +329,7 @@ test("a throwing subscriber does not stop the others", async () => {
 		reached = true;
 	});
 	store.update((draft) => {
-		draft.single = { ...draft.single, ref: "paper" };
+		draft.single = { ...draft.single, ref: "dune" };
 		return draft;
 	});
 	assert.equal(reached, true);

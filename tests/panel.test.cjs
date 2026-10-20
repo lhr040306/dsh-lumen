@@ -112,10 +112,11 @@ function createEngineStub() {
  */
 function createSplashStub(options) {
 	const o = options || {};
-	const calls = { probe: 0, upload: [], clear: 0 };
-	const probeAnswer = o.probe || { configured: false, kind: null, bytes: 0 };
+	const calls = { probe: 0, upload: [], clear: 0, builtin: 0 };
+	const probeAnswer = o.probe || { configured: false, kind: null, bytes: 0, source: "off" };
 	const uploadAnswer = o.upload || ((file) => ({ ok: true, kind: file.type.indexOf("video") === 0 ? "video" : "image", bytes: Number(file.size) || 0 }));
 	const clearAnswer = o.clear || { ok: true, cleared: true };
+	const builtinAnswer = o.builtin || { ok: true };
 	return {
 		calls,
 		classify: (type) => {
@@ -135,6 +136,10 @@ function createSplashStub(options) {
 		clear: async () => {
 			calls.clear += 1;
 			return typeof clearAnswer === "function" ? clearAnswer() : clearAnswer;
+		},
+		useBuiltin: async () => {
+			calls.builtin += 1;
+			return typeof builtinAnswer === "function" ? builtinAnswer() : builtinAnswer;
 		}
 	};
 }
@@ -673,6 +678,37 @@ function decodedPhoto() {
 	return { dataUrl: "data:image/png;base64,AAAA", width: 1920, height: 1080, bytes: 40960, luminance: 0.5 };
 }
 
+/** The custom section's own picker — the one that takes pictures, not clips. */
+function customPickerOf(panel) {
+	const inputs = walk(panel.el).filter((el) => el.nodeType === 1 && el.tagName === "INPUT" && el.getAttribute("accept") === "image/*");
+	assert.equal(inputs.length, 1, "the panel should expose exactly one picture picker");
+	return inputs[0];
+}
+
+test("an applied picture is previewed as itself, not just as a size", async () => {
+	// "96KB" answers how big and nothing else. The question a user has when they
+	// come back to this section is "is that the picture I picked", and a crop of
+	// it is the only answer that question accepts.
+	const { panel, t } = makePanel({ decode: decodedPhoto });
+	const row = () => byClass(panel.el, "lumen-applied");
+	assert.equal(row().length, 1, "the custom section has no preview row");
+	assert.equal(row()[0].style.display, "none", "the preview row showed with no picture applied");
+
+	const picker = customPickerOf(panel);
+	picker.files = [{ name: "shot.png", type: "image/png", size: 4096 }];
+	picker.dispatch("change", {});
+	await flush();
+
+	assert.equal(row()[0].style.display, "", "the preview row stayed hidden after a picture was applied");
+	const thumb = byClass(panel.el, "lumen-applied-thumb")[0];
+	assert.equal(thumb.style.backgroundImage, 'url("data:image/png;base64,AAAA")', "the applied picture was not previewed");
+	// The bytes reported must be the file's, not the data URL's: base64 spends
+	// four characters per three bytes, so echoing the string length overstates
+	// the picture by a third.
+	assert.ok(textOf(panel.el).indexOf(t("custom.applied.image", { kb: 1 })) >= 0, "the applied picture was not named");
+	panel.destroy();
+});
+
 // ── the splash section ──────────────────────────────────────────────────────
 //
 // The section is optional by construction: a host that never registers the
@@ -716,21 +752,74 @@ test("the splash section translates in both languages", () => {
 	assert.equal(/[\u4e00-\u9fff]/.test(en.text), false, "the English panel leaked untranslated Chinese from the splash section");
 });
 
-test("the status line reports what the host says, and admits when it cannot ask", async () => {
+test("the applied splash is shown as itself, and the line admits when the host cannot be asked", async () => {
 	const configured = makePanel({ splash: createSplashStub({ probe: { configured: true, kind: "video", bytes: 20480 } }) });
 	await flush();
-	const statusText = () => {
-		const notes = walk(configured.panel.el).filter((el) => el.nodeType === 1 && el.classList.contains("lumen-note"));
-		return notes.map(textOf).join("\n");
-	};
+	const statusText = () => byClass(configured.panel.el, "lumen-applied-text").map(textOf).join("\n");
 	assert.ok(statusText().indexOf(configured.t("splash.current.video")) >= 0, "the clip splash was not reported");
 	assert.ok(statusText().indexOf("20KB") >= 0, "the size was not reported");
+	// A clip's first frame exists nowhere in CSS, so the preview has to be the
+	// element itself — and it must not pull the whole file down to draw 46x30.
+	const thumbs = byClass(configured.panel.el, "lumen-applied-thumb");
+	const thumb = thumbs[thumbs.length - 1];
+	const clips = walk(thumb).filter((el) => el.nodeType === 1 && el.tagName === "VIDEO");
+	assert.equal(clips.length, 1, "the clip splash has no frame preview");
+	assert.ok(clips[0].getAttribute("src").indexOf("/lumen/splash/media") >= 0, "the preview does not read the host's own route");
+	assert.equal(clips[0].getAttribute("preload"), "metadata", "the thumbnail would download the whole clip");
 	configured.panel.destroy();
+
+	// A picture needs no element: the same well paints it.
+	const picture = makePanel({ splash: createSplashStub({ probe: { configured: true, kind: "image", bytes: 4096 } }) });
+	await flush();
+	const wells = byClass(picture.panel.el, "lumen-applied-thumb");
+	const well = wells[wells.length - 1];
+	assert.ok(well.style.backgroundImage.indexOf('url("/lumen/splash/media') === 0, "the picture splash has no preview");
+	picture.panel.destroy();
 
 	const absent = makePanel({ splash: createSplashStub({ probe: { configured: false, kind: null, bytes: 0 } }) });
 	await flush();
 	assert.ok(textOf(absent.panel.el).indexOf(absent.t("splash.none")) >= 0, "an unset splash was not reported as unset");
+	// An empty well reads as a picture that failed to load; with nothing set
+	// there should be no well at all.
+	const empties = byClass(absent.panel.el, "lumen-applied-thumb");
+	assert.equal(empties[empties.length - 1].style.display, "none", "an empty preview well was left on screen");
 	absent.panel.destroy();
+});
+
+test("a splash the user turned off says so instead of looking unconfigured", async () => {
+	// With a splash shipping in the box, "there is none" is never an accident —
+	// it is a decision, and a section that answers "not set" leaves the user
+	// hunting for a feature they disabled themselves.
+	const off = makePanel({ splash: createSplashStub({ probe: { configured: false, kind: null, bytes: 0, source: "off" } }) });
+	await flush();
+	assert.ok(textOf(off.panel.el).indexOf(off.t("splash.off.state")) >= 0, "a switched-off splash was reported as merely unset");
+	off.panel.destroy();
+});
+
+test("the built-in splash is named, and one click brings it back", async () => {
+	// The panel does not own the built-in clip — the host serves it — so the
+	// status line has to come from the host's own answer rather than from a
+	// constant copied into the UI, and that is exactly what the header carries.
+	const built = makePanel({ splash: createSplashStub({ probe: { configured: true, kind: "video", bytes: 2048261, source: "builtin" } }) });
+	await flush();
+	const statusText = () => byClass(built.panel.el, "lumen-applied-text").map(textOf).join("\n");
+	assert.ok(statusText().indexOf(built.t("splash.current.builtin")) >= 0, "a built-in splash was reported as if the user had chosen it");
+	const btn = walk(built.panel.el).find((el) => el.nodeType === 1 && el.tagName === "BUTTON" && textOf(el) === built.t("splash.builtin"));
+	assert.ok(btn, "there is no way back to the built-in splash");
+	btn.dispatch("click", {});
+	await flush();
+	assert.equal(textOf(bannerOf(built.panel)), built.t("splash.builtinSet"), "restoring the built-in splash was not reported");
+	built.panel.destroy();
+});
+
+test("a built-in splash that cannot be restored says so instead of pretending", async () => {
+	const failing = makePanel({ splash: createSplashStub({ builtin: { ok: false, reason: "no-host" } }) });
+	await flush();
+	const btn = walk(failing.panel.el).find((el) => el.nodeType === 1 && el.tagName === "BUTTON" && textOf(el) === failing.t("splash.builtin"));
+	btn.dispatch("click", {});
+	await flush();
+	assert.equal(textOf(bannerOf(failing.panel)), failing.t("splash.error.noHost"), "a failed switch was reported as done");
+	failing.panel.destroy();
 });
 
 test("an unreachable host route is admitted rather than shown as 'not set'", async () => {
@@ -845,14 +934,14 @@ test("a failed upload is reported with the reason the host gave, and the file is
 	panel.destroy();
 });
 
-test("clearing reports which of the two outcomes actually happened", async () => {
+test("turning the splash off reports which of the two outcomes actually happened", async () => {
 	const cases = [
 		[{ ok: true, cleared: true }, "splash.cleared"],
 		[{ ok: true, cleared: false }, "splash.nothingToClear"]
 	];
 	for (const [answer, key] of cases) {
 		const built = makePanel({ splash: createSplashStub({ clear: answer }) });
-		const clearBtn = walk(built.panel.el).find((el) => el.nodeType === 1 && el.tagName === "BUTTON" && textOf(el) === built.t("splash.clear"));
+		const clearBtn = walk(built.panel.el).find((el) => el.nodeType === 1 && el.tagName === "BUTTON" && textOf(el) === built.t("splash.off"));
 		assert.ok(clearBtn, "the clear button was not rendered");
 		clearBtn.dispatch("click", {});
 		await flush();
@@ -861,7 +950,7 @@ test("clearing reports which of the two outcomes actually happened", async () =>
 	}
 
 	const failing = makePanel({ splash: createSplashStub({ clear: { ok: false, reason: "no-host" } }) });
-	const btn = walk(failing.panel.el).find((el) => el.nodeType === 1 && el.tagName === "BUTTON" && textOf(el) === failing.t("splash.clear"));
+	const btn = walk(failing.panel.el).find((el) => el.nodeType === 1 && el.tagName === "BUTTON" && textOf(el) === failing.t("splash.off"));
 	btn.dispatch("click", {});
 	await flush();
 	assert.equal(textOf(bannerOf(failing.panel)), failing.t("splash.error.noHost"), "a failed clear was not reported");

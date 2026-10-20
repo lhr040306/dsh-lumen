@@ -52,6 +52,10 @@ const SPLASH_PATH = "/lumen/splash";
 const MEDIA_PATH = `${SPLASH_PATH}/media`;
 const UPLOAD_PATH = `${SPLASH_PATH}/upload`;
 const CLEAR_PATH = `${SPLASH_PATH}/clear`;
+/** Switch back to the clip the package itself ships with. */
+const BUILTIN_PATH = `${SPLASH_PATH}/builtin`;
+/** The host's header naming where the current splash came from, on the media route. */
+const SOURCE_HEADER = "x-lumen-splash-source";
 /**
  * What this half will hand to the host, mapped to what it calls it.
  *
@@ -80,6 +84,17 @@ const LAYER_ATTRIBUTE = "data-dsh-lumen-splash";
 const FIRST_FRAME_DEADLINE_MS = 8000;
 /** Longest a clip may stand before it is taken down regardless, ms. */
 const PLAY_DEADLINE_MS = 120000;
+/**
+ * How long the dismissing gesture stays owned by the splash, ms.
+ *
+ * A skip and a click on the panel underneath are the same physical motion when
+ * the panel happens to be the page: the layer is removed inside the click that
+ * skipped it, so anything the same finger does next lands on an interface it
+ * has not seen yet. This is the window in which that second event is refused.
+ */
+const CLICK_THROUGH_MS = 400;
+/** Every event a completed or in-flight pointer gesture can produce, for the window above. */
+const SWALLOWED_TYPES = ["pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend", "click"];
 /** `inset` is not understood by every engine this runs on; four sides always are. */
 const FULL_BLEED = { position: "fixed", top: "0", left: "0", right: "0", bottom: "0" };
 /**
@@ -159,6 +174,10 @@ function createSplash(deps) {
 	let layer = null;
 	/** Tear-down for the live clip, or null. Assigned by {@link playClip}. */
 	let clipStop = null;
+	/** The capture-phase listener that owns the dismissing gesture, or null. */
+	let swallower = null;
+	/** Deadline for {@link swallower}, ms timer id, or null. */
+	let swallowTimer = null;
 	/** Set once the interface has been revealed by this half. */
 	let revealed = false;
 
@@ -198,22 +217,23 @@ function createSplash(deps) {
 		try {
 			const response = await fetchImpl(MEDIA_PATH, { method: "HEAD", credentials: "same-origin" });
 			if (response === null || response === undefined || typeof response.status !== "number") return null;
-			if (response.status === 404) return { configured: false, kind: null, bytes: 0 };
+			if (response.status === 404) return { configured: false, kind: null, bytes: 0, source: "off" };
 			if (response.ok !== true) return null;
-			let type = "";
-			try {
-				if (response.headers !== null && response.headers !== undefined && typeof response.headers.get === "function") {
-					type = String(response.headers.get("content-type") || "");
-				}
-			} catch {}
+			const header = (name) => {
+				try {
+					if (response.headers !== null && response.headers !== undefined && typeof response.headers.get === "function") {
+						return String(response.headers.get(name) || "");
+					}
+				} catch {}
+				return "";
+			};
+			const type = header("content-type");
 			const kind = type.split(";")[0].trim().toLowerCase().indexOf("video/") === 0 ? "video" : "image";
-			let bytes = 0;
-			try {
-				if (response.headers !== null && response.headers !== undefined && typeof response.headers.get === "function") {
-					bytes = Number(response.headers.get("content-length")) || 0;
-				}
-			} catch {}
-			return { configured: true, kind, bytes };
+			// Which source is being served. A host that predates the built-in
+			// clip sends no such header, and its only source was the user's own
+			// upload — so a missing header is "custom", not "unknown".
+			const source = header(SOURCE_HEADER) === "builtin" ? "builtin" : "custom";
+			return { configured: true, kind, bytes: Number(header("content-length")) || 0, source };
 		} catch {
 			return null;
 		}
@@ -268,12 +288,106 @@ function createSplash(deps) {
 		}
 	}
 
+	/**
+	 * Point the splash back at the clip this package ships with.
+	 *
+	 * This is the cheap way out of a custom splash, and the panel has to say what
+	 * it costs: the host drops the preference *and* the file, because nothing
+	 * references those bytes afterwards and leaving them behind would grow
+	 * `lumen-media` with a clip that can never be served again. Switching back to
+	 * the user's own clip means choosing it again — which is why the message this
+	 * produces differs depending on whether there was anything to lose.
+	 */
+	async function useBuiltin() {
+		if (fetchImpl === null) return { ok: false, reason: "no-host" };
+		try {
+			const response = await fetchImpl(BUILTIN_PATH, { method: "POST", credentials: "same-origin" });
+			const payload = await readJson(response);
+			if (response !== null && response.ok === true && payload !== null && payload.ok === true) return { ok: true };
+			return { ok: false, reason: reasonOf(payload, response, "builtin") };
+		} catch {
+			return { ok: false, reason: "network" };
+		}
+	}
+
+	/**
+	 * Stop owning the dismissing gesture.
+	 *
+	 * Called at the first completed click, at the deadline, and on teardown — the
+	 * last of which matters most: a capture listener left on `document` after this
+	 * module is gone would outlive the thing it was protecting, and would silently
+	 * eat the interface's first click.
+	 */
+	function endSwallow() {
+		if (swallower === null) return;
+		const handler = swallower;
+		swallower = null;
+		for (const type of SWALLOWED_TYPES) {
+			try {
+				doc.removeEventListener(type, handler, true);
+			} catch {}
+		}
+		try {
+			if (swallowTimer !== null) win.clearTimeout(swallowTimer);
+		} catch {}
+		swallowTimer = null;
+	}
+
+	/**
+	 * Take ownership of the gesture that dismissed the splash.
+	 *
+	 * WHY THIS EXISTS AT ALL
+	 *
+	 * Skipping is a click anywhere on the layer, and the settings panel is
+	 * routinely the page underneath it. Removing the layer inside that click does
+	 * not re-dispatch it — but it does move the ground under the *same* gesture: a
+	 * press that started on the layer can be released on the panel that has just
+	 * appeared, and the browser reports the click against whatever those two
+	 * points have in common. A second, impatient click does the same thing more
+	 * directly, and 关闭开屏 can sit exactly where the skip hint was.
+	 *
+	 * That is not hypothetical. It is the observed way the built-in splash got
+	 * switched off for somebody who had done nothing but try to skip it: the clip
+	 * got shorter, the confirmation click came after the layer was gone, and the
+	 * control under the cursor was the one that disables the splash. The symptom —
+	 * "it just does not appear any more" — is nearly impossible to diagnose from
+	 * the outside, so the cause is removed rather than documented.
+	 *
+	 * Capture phase, because the panel's handlers are ordinary ones: an event
+	 * stopped before it reaches its target never activates anything.
+	 * `preventDefault` too, for the browser-level defaults a click still carries.
+	 */
+	function beginSwallow() {
+		if (swallower !== null) return;
+		const handler = (event) => {
+			try {
+				event.stopPropagation();
+				event.preventDefault();
+			} catch {}
+			// A click is the end of one gesture. Anything after it is the user's
+			// next intention and must reach the interface untouched.
+			if (event !== null && event !== undefined && event.type === "click") endSwallow();
+		};
+		swallower = handler;
+		for (const type of SWALLOWED_TYPES) {
+			try {
+				doc.addEventListener(type, handler, true);
+			} catch {}
+		}
+		try {
+			swallowTimer = win.setTimeout(endSwallow, CLICK_THROUGH_MS);
+		} catch {}
+	}
+
 	/** Remove the clip layer and stop everything it installed. Idempotent. */
 	function dismissClip() {
 		if (clipStop !== null) {
 			clipStop();
 			clipStop = null;
 		}
+		// Teardown outranks the grace window: nobody is going to see the click this
+		// was holding back, so holding it back would only lose the next real one.
+		endSwallow();
 		if (layer !== null) {
 			try {
 				if (layer.parentNode !== null && layer.parentNode !== undefined) layer.parentNode.removeChild(layer);
@@ -343,6 +457,8 @@ function createSplash(deps) {
 		let dismissed = false;
 		let firstFrameTimer = null;
 		let playTimer = null;
+		/** Whether a finger or button went down on the layer and has not come back up. */
+		let pointerHeld = false;
 
 		const on = (target, type, handler) => {
 			try {
@@ -382,20 +498,46 @@ function createSplash(deps) {
 		};
 
 		/** The clip is over, or never started, or was skipped. Take the layer down. */
-		const dismiss = () => {
+		const dismiss = (fromGesture) => {
 			if (dismissed) return;
 			dismissed = true;
 			clearTimers();
 			off(clip, "playing", onPlaying);
 			off(clip, "ended", dismiss);
 			off(clip, "error", dismiss);
-			off(element, "click", dismiss);
-			off(doc, "keydown", dismiss);
+			off(element, "click", onSkip);
+			off(element, "pointerdown", onPointerDown);
+			off(doc, "pointerup", onPointerUp);
+			off(doc, "keydown", onKeyDown);
+			// Order matters: taking the layer down ends any swallow, so the gesture
+			// this dismissal owns has to be claimed *after* the teardown, not before.
+			const claimGesture = fromGesture === true || pointerHeld;
+			pointerHeld = false;
 			clipStop = null;
 			dismissClip();
+			// Either the user's own gesture dismissed this, or the clip ended while a
+			// finger was still down on the layer. In both cases a release is still
+			// coming, and it is no longer meant for whatever is underneath.
+			if (claimGesture) beginSwallow();
 			// Leaving the interface covered after the clip is gone is the one
 			// unrecoverable outcome there is, so a dismissal always reveals too.
 			lift(bridge);
+		};
+
+		/**
+		 * Keyboard skip.
+		 *
+		 * Enter and Space are the two keys that activate whatever holds focus, and
+		 * the shell's boot layer can hold it. Refusing their default is the keyboard
+		 * counterpart of {@link beginSwallow}: the key that dismisses the splash
+		 * must not also press a control the user has never seen.
+		 */
+		const onKeyDown = (event) => {
+			try {
+				const key = event === null || event === undefined ? undefined : event.key;
+				if (key === "Enter" || key === " " || key === "Spacebar") event.preventDefault();
+			} catch {}
+			dismiss(true);
 		};
 
 		/**
@@ -410,13 +552,34 @@ function createSplash(deps) {
 			lift(bridge);
 		};
 
+		const onPointerDown = () => {
+			pointerHeld = true;
+		};
+		const onPointerUp = () => {
+			pointerHeld = false;
+		};
+
+		/**
+		 * The skip itself.
+		 *
+		 * Kept as its own function, rather than wiring `dismiss` straight to the
+		 * event, because the gesture flag must be unambiguous: a listener receives
+		 * an event where a plain call receives nothing, and "was this a gesture"
+		 * may not depend on the shape of an argument.
+		 */
+		const onSkip = () => {
+			dismiss(true);
+		};
+
 		on(clip, "playing", onPlaying);
 		on(clip, "ended", dismiss);
 		on(clip, "error", dismiss);
 		// The whole viewport is the skip target. It is the only affordance that
 		// needs no translation and cannot be missed by somebody who wants out.
-		on(element, "click", dismiss);
-		on(doc, "keydown", dismiss);
+		on(element, "click", onSkip);
+		on(element, "pointerdown", onPointerDown);
+		on(doc, "pointerup", onPointerUp);
+		on(doc, "keydown", onKeyDown);
 
 		clipStop = dismiss;
 		try {
@@ -483,6 +646,7 @@ function createSplash(deps) {
 		probe,
 		upload,
 		clear,
+		useBuiltin,
 		/** Remove the clip layer early, if there is one. Used by teardown. */
 		dismiss: dismissClip,
 		/** Whether a region is a picture or a clip, for callers classifying a drop. */
@@ -494,8 +658,8 @@ function createSplash(deps) {
 		/** Read-only view of what this half is doing, for diagnostics and tests. */
 		inspect: () => ({ phase, layer: layer !== null, revealed, started }),
 		/** Exposed so the panel can build a route without a second copy of it. */
-		routes: { media: MEDIA_PATH, upload: UPLOAD_PATH, clear: CLEAR_PATH }
+		routes: { media: MEDIA_PATH, upload: UPLOAD_PATH, clear: CLEAR_PATH, builtin: BUILTIN_PATH }
 	};
 }
 
-module.exports = { createSplash, ACCEPTED_TYPES, classify, LAYER_ATTRIBUTE, LAYER_Z_INDEX, MEDIA_PATH, UPLOAD_PATH, CLEAR_PATH, COVER_BRIDGE };
+module.exports = { createSplash, ACCEPTED_TYPES, classify, LAYER_ATTRIBUTE, LAYER_Z_INDEX, MEDIA_PATH, UPLOAD_PATH, CLEAR_PATH, BUILTIN_PATH, COVER_BRIDGE };

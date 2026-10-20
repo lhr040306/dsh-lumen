@@ -1,10 +1,10 @@
 # 壁纸规格 · dsh-lumen
 
-本文是 `dsh-lumen` 的参考规格：壁纸条目、12 套配方、微调参数、洗色与可读性下限、本地图片的亮度实测、轮播调度的全部常量、状态字段、以及持久化格式。
+本文是 `dsh-lumen` 的参考规格：壁纸条目、5 套配方、微调参数、洗色与可读性下限、本地图片的亮度实测、轮播调度的全部常量、状态字段、以及持久化格式。
 
 其中的数字都不是从注释里抄的，而是从 `src/` 里的导出常量与测试用的边界值读出来的。改动源码后请一并更新本文（`tests/state.test.cjs` 会断言持久化字段列表与状态自身字段列表完全一致，那是最容易漂移的一处）。
 
-**版本**：`schema 1` · 插件 `1.0.1`
+**版本**：`schema 1` · 插件 `1.1.0`
 
 ---
 
@@ -74,30 +74,23 @@ interface WallpaperItem {
 
 ## 三、内置配方
 
-12 套，深色 7 套、浅色 5 套。`scheme` 是设计取向，配方在另一套主题下同样能渲染——它只影响配方自身的取色倾向。
+5 套，深色 3 套、浅色 2 套。`scheme` 是设计取向，配方在另一套主题下同样能渲染——它只影响配方自身的取色倾向。
 
 | id | 中文 | English | scheme | softness 默认 | grain 默认 | complexity | tags |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `drift` | 弥散 | Drift | dark | 0.62 | 0.22 | 0.30 | calm, glow |
 | `aurora` | 极光 | Aurora | dark | 0.72 | 0.18 | 0.42 | cool, band |
 | `starfield` | 星野 | Starfield | dark | 0.30 | 0.30 | 0.55 | night, point |
-| `abyss` | 深海 | Abyss | dark | 0.66 | 0.16 | 0.34 | deep, cool |
-| `ember` | 暮霭 | Ember | dark | 0.70 | 0.26 | 0.44 | warm, dusk |
-| `mono` | 墨韵 | Mono | dark | 0.58 | 0.20 | 0.18 | minimal, neutral |
-| `lumen` | 光晕 | Halo | dark | 0.60 | 0.18 | 0.36 | focus, glow |
-| `ivory` | 象牙 | Ivory | light | 0.64 | 0.30 | 0.22 | warm, paper |
 | `mist` | 晨雾 | Mist | light | 0.78 | 0.16 | 0.20 | cool, calm |
 | `dune` | 沙丘 | Dune | light | 0.50 | 0.34 | 0.30 | warm, band |
-| `glacier` | 冰川 | Glacier | light | 0.44 | 0.22 | 0.34 | cool, facet |
-| `paper` | 纸纹 | Paper | light | 0.50 | 0.62 | 0.14 | paper, neutral |
 
 **`complexity`（0–1）** 不是给用户看的标签，是**自动弱化的输入**：它估计画面有多"花"，越高则洗色抬升越多。取值和实际观感对应：
 
-- `paper` 0.14 —— 近乎纯色，几乎不需要保护
-- `mono` 0.18 —— 极简
+- `mist` 0.20 —— 大片柔和薄雾，几乎不需要保护
+- `aurora` 0.42 —— 极光带分层，中等偏花
 - `starfield` 0.55 —— 最花，大量点状高光
 
-**`softness` / `grain` 默认值** 是每个配方单独标定的（`defaultSoftnessFor` / `defaultGrainFor`），不是全局常数。例如 `paper` 的 grain 默认 0.62（纸纹感靠它），而 `abyss` 只有 0.16（深色大面积渐变加颗粒会显脏）。
+**`softness` / `grain` 默认值** 是每个配方单独标定的（`defaultSoftnessFor` / `defaultGrainFor`），不是全局常数。例如 `dune` 的 grain 默认 0.34（沙粒感靠它），而 `mist` 只有 0.16（浅色薄雾加颗粒会显脏）。
 
 ---
 
@@ -128,7 +121,7 @@ renderRecipe({ recipeId, seed, tuning })
 | `radial` | `{ x, y, rx, ry, color, alpha, fade }` | 一个弥散光斑。位置与半径都是百分比，所以对任意视口比例都成立 |
 | `linear` | `(angle, stops)` | 条带状渐变（`aurora` / `dune` 的带子） |
 | `vignette` | `(strength, inset)` | 四周压暗，把视线收到中间 |
-| `halo` | `(strength, inset)` | 中心提亮（`lumen` / `mono` 的聚焦感） |
+| `halo` | `(strength, inset)` | 中心提亮（`drift` / `aurora` 的聚焦感） |
 
 颜色由 `tone(L, chroma, hue)` 产生——在 **Oklab / OKLCH** 感知空间里取色，而不是在 HSL 里。这一点有实际意义：HSL 里"同样的明暗变化"在感知上并不均匀，一套配方换色相后会一半偏亮一半偏暗；Oklab 的 `L` 是感知均匀的，所以配方换色相后亮度观感保持一致。超出 sRGB 色域时对色度做二分收敛（`oklab.cjs`）。
 
@@ -516,7 +509,7 @@ interface Schedule {
 
 | 字段 | 含义 |
 | --- | --- |
-| `plugin` / `build` / `schema` | `"dsh-lumen"` / `"1.0.1"` / `1` |
+| `plugin` / `build` / `schema` | `"dsh-lumen"` / `"1.1.0"` / `1` |
 | `status` | `booting` · `ready` · `degraded` · `disposed` |
 | `warnings` | `[dsh-lumen]` 前缀的告警行数组 |
 | `health` | `{ hostAvailable, hostReason, lastError, hasStorage }` |
@@ -543,7 +536,7 @@ interface Schedule {
 
 根节点的 `z-index: -1` 意味着它在应用**之前**绘制——所以它盖不住任何界面元素，也解释了为什么"画布必须半透明"是壁纸可见的前提（`--pg-bg` 那种预览工具条自己的底色只有在壁纸渲染失败时才会露出来）。
 
-把它和开屏层放在一起看，这里有一处**刻意的两极**：壁纸取 `-1`（在文档之下），开屏取 `2147483647`（CSS 允许的最大值，在一切之上）。两者都不是随手填的数——壁纸要待在内容背后才叫壁纸，而开屏要盖住整个窗口、包括其它插件画在最上层的浮层（那个预算是公开的，见 [`SPLASH-SPEC.md`](SPLASH-SPEC.md) §6.5 与 §八）。而且这两个极端不会同时存在：开屏层在界面可用的那一刻就已经被移除了。
+把它和开屏层放在一起看，这里有一处**刻意的两极**：壁纸取 `-1`（在文档之下），开屏取 `2147483647`（CSS 允许的最大值，在一切之上）。两者都不是随手填的数——壁纸要待在内容背后才叫壁纸，而开屏要盖住整个窗口、包括其它插件画在最上层的浮层（那个预算是公开的，见 [`SPLASH-SPEC.md`](SPLASH-SPEC.md) §6.6 与 §八）。而且这两个极端不会同时存在：开屏层在界面可用的那一刻就已经被移除了。
 
 ### 12.1 设置面板用到的类名
 

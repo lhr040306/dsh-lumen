@@ -19,7 +19,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { createDocument } = require("./helpers/minidom.cjs");
-const { createSplash, ACCEPTED_TYPES, LAYER_ATTRIBUTE, LAYER_Z_INDEX, MEDIA_PATH, UPLOAD_PATH, CLEAR_PATH, COVER_BRIDGE } = require("../src/splash.cjs");
+const { createSplash, ACCEPTED_TYPES, LAYER_ATTRIBUTE, LAYER_Z_INDEX, MEDIA_PATH, UPLOAD_PATH, CLEAR_PATH, BUILTIN_PATH, COVER_BRIDGE } = require("../src/splash.cjs");
 
 /** A translator that returns the key, so assertions can name the string. */
 const t = (key) => key;
@@ -125,13 +125,20 @@ function findLayer(document) {
 
 test("probe reads the host's answer, and treats 404 as 'not set' rather than as a fault", async () => {
 	const missing = makeRealm({ answer: () => jsonResponse(404, { ok: false }) });
-	assert.deepEqual(await missing.splash.probe(), { configured: false, kind: null, bytes: 0 });
+	assert.deepEqual(await missing.splash.probe(), { configured: false, kind: null, bytes: 0, source: "off" });
 
 	const picture = makeRealm({ answer: () => jsonResponse(200, null, { "content-type": "image/png", "content-length": "4096" }) });
-	assert.deepEqual(await picture.splash.probe(), { configured: true, kind: "image", bytes: 4096 });
+	assert.deepEqual(await picture.splash.probe(), { configured: true, kind: "image", bytes: 4096, source: "custom" });
 
 	const clip = makeRealm({ answer: () => jsonResponse(200, null, { "content-type": "video/mp4; codecs=avc1", "content-length": "2048" }) });
-	assert.deepEqual(await clip.splash.probe(), { configured: true, kind: "video", bytes: 2048 });
+	assert.deepEqual(await clip.splash.probe(), { configured: true, kind: "video", bytes: 2048, source: "custom" });
+
+	// The host says which source is being served; the panel needs it to tell a
+	// splash the user chose from the one the plugin installed by itself.
+	const builtin = makeRealm({
+		answer: () => jsonResponse(200, null, { "content-type": "video/mp4", "content-length": "2048261", "x-lumen-splash-source": "builtin" })
+	});
+	assert.deepEqual(await builtin.splash.probe(), { configured: true, kind: "video", bytes: 2048261, source: "builtin" });
 
 	// A host that is there but unhappy is not "no splash" — the panel says so
 	// rather than telling the user their splash is gone.
@@ -199,6 +206,24 @@ test("clear reports whether there was anything to remove", async () => {
 
 	const nothing = makeRealm({ answer: () => jsonResponse(200, { ok: true, value: { cleared: false } }) });
 	assert.deepEqual(await nothing.splash.clear(), { ok: true, cleared: false });
+});
+
+test("switching back to the built-in clip is one POST, and its failure is reported", async () => {
+	const switched = makeRealm({ answer: () => jsonResponse(200, { ok: true, value: { source: "builtin" } }) });
+	assert.deepEqual(await switched.splash.useBuiltin(), { ok: true });
+	assert.equal(switched.calls[0].url, BUILTIN_PATH);
+	assert.equal(switched.calls[0].init.method, "POST");
+	assert.equal(switched.calls[0].init.body, undefined, "the switch carries no payload: the clip is already on disk");
+
+	const refused = makeRealm({ answer: () => jsonResponse(404, { ok: false, error: { code: "no-builtin" } }) });
+	assert.deepEqual(await refused.splash.useBuiltin(), { ok: false, reason: "no-builtin" });
+
+	const offline = makeRealm({ fetch: async () => { throw new Error("offline"); } });
+	assert.deepEqual(await offline.splash.useBuiltin(), { ok: false, reason: "network" });
+
+	const channel = makeRealm({ fetch: null });
+	assert.deepEqual(await channel.splash.useBuiltin(), { ok: false, reason: "no-host" });
+	assert.equal(channel.calls.length, 0, "a channel-less half asked anyway");
 });
 
 // ── the boot lifecycle ─────────────────────────────────────────────────────
@@ -311,6 +336,62 @@ test("a click anywhere, or any key, ends the clip early", async () => {
 	keyRealm.document.dispatch("keydown", {});
 	assert.deepEqual(findLayer(keyRealm.document), []);
 	assert.equal(byKey.calls.lift, 1);
+});
+
+test("the click that skipped the clip never reaches the interface underneath", async () => {
+	// The panel is routinely the page under the layer, and 关闭开屏 can sit exactly
+	// where the skip hint was. That is how the built-in splash got switched off for
+	// someone who had only tried to skip it, so the gesture is claimed, not shared.
+	const { bridge } = makeBridge();
+	const realm = makeRealm({ bridge, answer: () => jsonResponse(200, null, { "content-type": "video/mp4" }) });
+	realm.splash.startCover();
+	await settle();
+
+	findLayer(realm.document)[0].dispatch("click", {});
+	assert.deepEqual(findLayer(realm.document), [], "the skip did not take the layer down");
+
+	const first = { stopped: 0, prevented: 0, stopPropagation() { this.stopped += 1; }, preventDefault() { this.prevented += 1; } };
+	realm.document.dispatch("click", first);
+	assert.equal(first.stopped, 1, "the dismissal let the rest of its gesture through to the panel");
+	assert.equal(first.prevented, 1, "a click carries browser defaults that must not run either");
+
+	// One gesture, not a grace period: the next intention belongs to the user.
+	const second = { stopped: 0, prevented: 0, stopPropagation() { this.stopped += 1; }, preventDefault() { this.prevented += 1; } };
+	realm.document.dispatch("click", second);
+	assert.equal(second.stopped, 0, "the window outlived the gesture it was opened for");
+});
+
+test("a clip that ends by itself leaves the next click alone", async () => {
+	// The swallow exists for a gesture in flight. A clip that simply finished has
+	// nobody's finger in it, and eating the first click afterwards would be a
+	// worse bug than the one it guards against.
+	const { bridge } = makeBridge();
+	const realm = makeRealm({ bridge, answer: () => jsonResponse(200, null, { "content-type": "video/mp4" }) });
+	realm.splash.startCover();
+	await settle();
+
+	const clip = findLayer(realm.document)[0].queryAll((el) => el.tagName === "VIDEO")[0];
+	clip.dispatch("ended", {});
+
+	const probe = { stopped: 0, prevented: 0, stopPropagation() { this.stopped += 1; }, preventDefault() { this.prevented += 1; } };
+	realm.document.dispatch("click", probe);
+	assert.equal(probe.stopped, 0, "a natural end swallowed a click nobody made against the splash");
+});
+
+test("teardown takes the gesture guard with it", async () => {
+	// A capture listener left on `document` after the module is disposed would
+	// outlive the thing it protects and quietly eat the interface's first click.
+	const { bridge } = makeBridge();
+	const realm = makeRealm({ bridge, answer: () => jsonResponse(200, null, { "content-type": "video/mp4" }) });
+	realm.splash.startCover();
+	await settle();
+
+	findLayer(realm.document)[0].dispatch("click", {});
+	realm.splash.dispose();
+
+	const probe = { stopped: 0, prevented: 0, stopPropagation() { this.stopped += 1; }, preventDefault() { this.prevented += 1; } };
+	realm.document.dispatch("click", probe);
+	assert.equal(probe.stopped, 0, "a disposed splash was still eating clicks");
 });
 
 test("the last resort still runs if the first frame never comes and nothing else fires", async () => {

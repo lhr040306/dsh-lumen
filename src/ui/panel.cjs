@@ -46,6 +46,10 @@ const {
 	normalizeHourlyMinutes
 } = require("../scheduler.cjs");
 const { prepareImage } = require("../image.cjs");
+// The splash's media route, taken from the module that owns it rather than
+// typed out again: the preview is a plain <img>-style fetch of whatever the
+// host is serving, so it has to be the same path the host half answers on.
+const { MEDIA_PATH } = require("../splash.cjs");
 const { createTranslator } = require("../i18n.cjs");
 
 /** Preset minutes-past-the-hour offered by the hourly trigger. */
@@ -131,6 +135,20 @@ function itemSwatch(item, tuning) {
 	const background = itemToBackground(item, tuning);
 	if (background === null) return dom.swatch("none", "rgba(128,128,128,.3)");
 	return dom.swatch(background.image, background.color);
+}
+
+/**
+ * The real byte size behind a `data:` URL.
+ *
+ * Base64 spends four characters on every three bytes, so the string length is
+ * not the file size — reporting it raw overstates the picture by a third, and
+ * the number sits next to a knob the user can use to judge whether it is worth
+ * keeping. Three quarters of the payload, minus the `data:...;base64,` header.
+ */
+function dataUrlKb(ref) {
+	const comma = typeof ref === "string" ? ref.indexOf(",") : -1;
+	const payload = comma >= 0 ? ref.length - comma - 1 : 0;
+	return Math.max(1, Math.round((payload * 3) / 4 / 1024));
 }
 
 /**
@@ -366,7 +384,18 @@ function createPanel(deps) {
 	// ── custom wallpaper: file, URL, gradient ─────────────────────────────────
 
 	const customGroup = dom.h("div", { class: "lumen-card" });
-	const imageHint = dom.h("span", { class: "lumen-note" });
+	/**
+	 * What the custom sources currently have applied, shown as the picture.
+	 *
+	 * This row used to be a bare "96KB", which answers how big and nothing else.
+	 * A 46x30 crop of the actual image answers the question a person actually
+	 * has after closing the panel and coming back — "is this the one I picked" —
+	 * and it is the only thing that can.
+	 */
+	const appliedThumb = dom.h("div", { class: "lumen-applied-thumb" });
+	const appliedText = dom.h("span", { class: "lumen-applied-text" });
+	const imageHint = dom.h("div", { class: "lumen-applied" }, [appliedThumb, appliedText]);
+	imageHint.style.display = "none";
 
 	/** Map an intake failure code onto the sentence the user reads. */
 	function errorKeyFor(code) {
@@ -676,6 +705,9 @@ function createPanel(deps) {
 			const result = await splash.upload(file);
 			if (result.ok === true) {
 				splashed = true;
+				// Bumped before `sync()` sees the new answer, so the preview re-reads
+				// the route instead of painting the cached file it just replaced.
+				thumbVersion += 1;
 				splashInfo = { configured: true, kind: result.kind, bytes: result.bytes };
 			} else {
 				say(t(splashErrorKey(result.reason)), true);
@@ -707,8 +739,34 @@ function createPanel(deps) {
 		say(t("splash.clearing"), false);
 		const result = await splash.clear();
 		if (result.ok === true) {
-			splashInfo = { configured: false, kind: null, bytes: 0 };
+			splashInfo = { configured: false, kind: null, bytes: 0, source: "off" };
 			say(t(result.cleared ? "splash.cleared" : "splash.nothingToClear"), false);
+		} else {
+			say(t(splashErrorKey(result.reason)), true);
+		}
+		sync();
+	}
+
+	/**
+	 * Switch back to the clip the plugin ships with.
+	 *
+	 * The panel does not know how big that clip is or how long it runs — the host
+	 * is the one serving it, so the answer is re-read from the host rather than
+	 * guessed at here. `thumbVersion` moves first so the preview re-fetches
+	 * instead of painting the file it just stopped serving.
+	 */
+	async function resetToBuiltin() {
+		// Read the previous state *before* the call, because that is what decides
+		// whether anything was actually lost. Saying "removed" when nothing was
+		// there is noise; saying nothing when a user's own clip was deleted is a
+		// surprise, and this panel does not do surprises about deletions.
+		const hadOwn = splashInfo.configured === true && splashInfo.source !== "builtin";
+		say(t("splash.switching"), false);
+		const result = await splash.useBuiltin();
+		if (result.ok === true) {
+			thumbVersion += 1;
+			say(t(hadOwn ? "splash.builtinSetHad" : "splash.builtinSet"), false);
+			refreshSplashInfo();
 		} else {
 			say(t(splashErrorKey(result.reason)), true);
 		}
@@ -717,7 +775,10 @@ function createPanel(deps) {
 
 	const splashPicker = dom.filePicker("image/*,video/*", stageFiles, { multiple: false });
 	const splashTargets = dom.h("div", { class: "lumen-row is-stack" });
-	const splashStatus = dom.h("div", { class: "lumen-note" });
+	/** The applied splash, as itself: a crop of the picture, or the clip's first frame. */
+	const splashThumb = dom.h("div", { class: "lumen-applied-thumb" });
+	const splashStatusTextEl = dom.h("span", { class: "lumen-applied-text" });
+	const splashStatus = dom.h("div", { class: "lumen-applied" }, [splashThumb, splashStatusTextEl]);
 
 	/**
 	 * The destination choices, rebuilt only when the staged file changes.
@@ -748,9 +809,85 @@ function createPanel(deps) {
 	/** What the host says it is serving, in one line. */
 	function splashStatusText() {
 		if (splashInfo === null) return t("splash.unknown");
-		if (splashInfo.configured !== true) return t("splash.none");
+		// "Off" and "never set" are different sentences now that a splash ships
+		// with the plugin: the only way to have none is to have turned it off,
+		// and saying so is what stops "where did my splash go" from being a
+		// mystery. A picture-less answer still says "not set" for the case where
+		// the host reported nothing at all.
+		if (splashInfo.configured !== true) {
+			return t(splashInfo.source === "off" ? "splash.off.state" : "splash.none");
+		}
 		const kb = Math.max(1, Math.round((Number(splashInfo.bytes) || 0) / 1024));
-		return `${t(splashInfo.kind === "video" ? "splash.current.video" : "splash.current.image")} · ${kb}KB`;
+		// "Built-in" is not a flavour of "clip splash": it is the one the plugin
+		// installed by itself, and the only way a user learns that a startup film
+		// came from this plugin rather than from somewhere else.
+		const key = splashInfo.source === "builtin"
+			? "splash.current.builtin"
+			: splashInfo.kind === "video"
+				? "splash.current.video"
+				: "splash.current.image";
+		return `${t(key)} · ${kb}KB`;
+	}
+
+	/**
+	 * What the host is serving, as itself.
+	 *
+	 * The status line used to be a sentence, and a sentence is a description of
+	 * a splash rather than a splash. Coming back to this section a week later,
+	 * the only question worth answering is "is that still the clip I picked" —
+	 * and a picture of it is the only answer that question accepts.
+	 *
+	 * A CLIP GETS A `<video>`, NOT A `background-image`. There is no CSS that
+	 * paints frame zero of an MP4, so the element itself is what shows it: the
+	 * `#t=0.1` fragment asks the browser to seek a tenth of a second in (frame
+	 * zero of a real encode is often a black keyframe, which would make a
+	 * perfectly good splash look broken), `preload="metadata"` keeps the whole
+	 * clip off the wire, and muted/playsinline make it inert — this is a
+	 * thumbnail, and nothing here should ever start playing.
+	 *
+	 * REBUILT ONLY WHEN THE ANSWER CHANGES. `sync()` runs on every store write,
+	 * and replacing the `<video>` each time would restart a media load on every
+	 * keystroke elsewhere in the panel. The signature is what the host reports,
+	 * so a new upload — the only thing that can change the picture — is exactly
+	 * what invalidates it. The version carried on the URL is what makes a *new*
+	 * file visible: the route is one fixed path, so a same-sized replacement
+	 * would otherwise be answered out of the browser's own cache and the panel
+	 * would go on showing the picture the user just replaced.
+	 */
+	let thumbVersion = 0;
+	let thumbSignature = null;
+	function paintSplashThumb() {
+		const configured = splashInfo !== null && splashInfo.configured === true;
+		const kind = configured && splashInfo.kind === "video" ? "video" : "image";
+		// The source rides in the signature as well as the size: switching from a
+		// clip to the built-in one can land on an identical byte count, and the
+		// preview would then keep showing the file the host just stopped serving.
+		const signature = configured ? `${kind}:${splashInfo.source || "custom"}:${Number(splashInfo.bytes) || 0}:${thumbVersion}` : null;
+		// Nothing to show is not a broken thumb: hide the well rather than leave
+		// an empty bordered box that reads as a picture that failed to load.
+		splashThumb.style.display = configured ? "" : "none";
+		if (signature === thumbSignature) return;
+		thumbSignature = signature;
+		dom.clear(splashThumb);
+		splashThumb.style.backgroundImage = "none";
+		if (!configured) return;
+		const source = `${MEDIA_PATH}?v=${thumbVersion}`;
+		if (kind === "video") {
+			splashThumb.appendChild(dom.h("video", {
+				attrs: {
+					// `#t=0.1` after the query: frame zero of a real encode is often a
+					// black keyframe, and a black thumbnail would make a perfectly
+					// good splash look broken.
+					src: `${source}#t=0.1`,
+					muted: true,
+					playsinline: true,
+					preload: "metadata",
+					"aria-hidden": "true"
+				}
+			}));
+			return;
+		}
+		splashThumb.style.backgroundImage = `url("${source}")`;
 	}
 
 	const splashGroup = splash === null
@@ -759,8 +896,14 @@ function createPanel(deps) {
 			dom.row(t("splash.local"), t("splash.local.hint"), [
 				splashPicker,
 				dom.button(t("splash.choose"), () => splashPicker.click(), { small: true }),
-				dom.button(t("splash.clear"), clearSplash, { small: true })
+				dom.button(t("splash.builtin"), resetToBuiltin, { small: true }),
+				dom.button(t("splash.off"), clearSplash, { small: true })
 			]),
+			// The built-in clip is on by default, which means a user who never
+			// opened this section still meets it on every start. Saying so here is
+			// the difference between "a feature I did not know I had" and "a film
+			// that hijacked my startup screen".
+			dom.h("div", { class: "lumen-note", text: t("splash.builtin.note") }),
 			splashTargets,
 			splashStatus
 		]);
@@ -1223,17 +1366,26 @@ function createPanel(deps) {
 		}
 
 		// custom
-		imageHint.textContent = item.kind === "image" ? `${Math.round(item.ref.length / 1024)}KB` : "";
-		if (item.kind === "gradient") {
-			urlDraft.value = urlDraft.value;
+		const appliedSource = item.kind === "image" || item.kind === "url" ? item.ref : null;
+		if (appliedSource === null) {
+			imageHint.style.display = "none";
+		} else {
+			imageHint.style.display = "";
+			// The value already passed `isSafeBackgroundImage` on the way in — no
+			// quotes, parens or whitespace — so it cannot escape this url("…").
+			appliedThumb.style.backgroundImage = `url("${appliedSource}")`;
+			appliedText.textContent = item.kind === "image"
+				? t("custom.applied.image", { kb: dataUrlKb(item.ref) })
+				: t("custom.applied.url", { host: itemLabel(item, lang, t) });
 		}
 
 		// splash
 		if (splashGroup !== null) {
 			renderTargets();
 			splashTargets.style.display = staged === null ? "none" : "";
-			splashStatus.textContent = splashStatusText();
-			splashStatus.className = `lumen-note${splashInfo === null ? " is-warn" : ""}`;
+			splashStatusTextEl.textContent = splashStatusText();
+			splashStatus.className = `lumen-applied${splashInfo === null ? " is-warn" : ""}`;
+			paintSplashThumb();
 		}
 
 		// rotation

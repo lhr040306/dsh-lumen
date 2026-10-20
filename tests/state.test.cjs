@@ -91,8 +91,23 @@ test("currentItem follows the mode", () => {
 	});
 	assert.equal(state.currentItem(rotating).ref, "dune");
 	// A rotation that lost its playlist mid-flight still shows something.
-	const orphaned = state.normalizeState({ mode: "rotation", playlist: [], single: { kind: "recipe", ref: "paper" } });
-	assert.equal(state.currentItem(orphaned).ref, "paper");
+	const orphaned = state.normalizeState({ mode: "rotation", playlist: [], single: { kind: "recipe", ref: "aurora" } });
+	assert.equal(state.currentItem(orphaned).ref, "aurora");
+});
+
+test("a wallpaper whose recipe no longer exists is repaired, not dropped", () => {
+	// Recipes do get retired — glacier and paper were removed in 1.0.2 — and a
+	// saved `ref` outlives them. Repairing to the first recipe keeps the entry
+	// meaning "a built-in wallpaper"; dropping it would silently shorten a
+	// playlist or leave the screen with no backdrop at all.
+	const repaired = state.normalizeState({ single: { kind: "recipe", ref: "glacier" } });
+	assert.equal(repaired.single.kind, "recipe");
+	assert.equal(repaired.single.ref, RECIPE_IDS[0]);
+	const list = state.normalizeState({
+		playlist: [{ kind: "recipe", ref: "paper" }, { kind: "recipe", ref: "dune" }]
+	});
+	assert.equal(list.playlist.length, 2, "a retired recipe shrank the playlist");
+	assert.equal(list.playlist[0].ref, RECIPE_IDS[0]);
 });
 
 test("gradient validation is an allow-list, not a deny-list", () => {

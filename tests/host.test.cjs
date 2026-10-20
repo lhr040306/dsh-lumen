@@ -35,6 +35,9 @@ const UPLOAD_PATH = `${SPLASH_PATH}/upload`;
 const CLEAR_PATH = `${SPLASH_PATH}/clear`;
 /** Pinned deliberately: the guard finds the cover by this string, so a rename must fail here first. */
 const COVER_MARK = "dsh-lumen-splash-cover";
+/** The clip the package ships with. Its size is what the built-in route must report. */
+const BUILTIN_MEDIA = path.join(__dirname, "..", "media", "splash.mp4");
+const BUILTIN_MEDIA_BYTES = fs.statSync(BUILTIN_MEDIA).size;
 
 /** A 1×1 PNG. The bytes are irrelevant to the store; only their length and round-trip are. */
 const PNG = Buffer.from(
@@ -236,6 +239,9 @@ async function uploadPng(splash) {
 	assert.equal(res.status, 200, `upload failed: ${res.body}`);
 	return JSON.parse(res.body).value.media;
 }
+
+/** Route that switches the splash back to the packaged clip. */
+const BUILTIN_PATH = `${SPLASH_PATH}/builtin`;
 
 const PING = JSON.stringify({ method: "ping" });
 
@@ -549,13 +555,44 @@ test("a GET is refused: the API is POST-only", async () => {
 // away, so what it does when a splash is NOT configured matters more than what
 // it does when one is.
 
-test("no splash configured contributes no rows at all", async () => {
+test("a fresh install is covered by the clip the package ships with", async () => {
+	// The default is no longer "nothing": a package that carries a splash shows
+	// it without anybody asking. This is the test that would have caught the
+	// feature being half-wired — a served clip with no cover is invisible, and a
+	// cover with no clip is a black screen.
 	await withTempHome(async () => {
-		const { inject } = await mount({});
+		const { splash, inject } = await mount({});
 		assert.equal(inject.length, 1, "the injection handler must be registered once");
+		const table = [];
+		inject[0](table);
+		assert.equal(table.length, 2, "a fresh install must inject the cover and its guard");
+		const style = table.find((row) => row.kind === "style").text;
+		assert.ok(style.includes(COVER_MARK));
+		assert.ok(!style.includes("background-image"), "the built-in splash is a clip, and CSS cannot paint one");
+
+		const res = await callHost(splash, makeRequest({ url: MEDIA_PATH, method: "HEAD" }));
+		assert.equal(res.status, 200, "the clip named by the cover must actually be served");
+		assert.equal(res.headers["content-type"], "video/mp4");
+		assert.equal(res.headers["x-lumen-splash-source"], "builtin", "the panel cannot label the source without this");
+		assert.equal(Number(res.headers["content-length"]), BUILTIN_MEDIA_BYTES);
+	});
+});
+
+test("switching the splash off contributes no rows at all", async () => {
+	await withTempHome(async () => {
+		const { splash, inject } = await mount({});
+		const cleared = await callHost(splash, makeRequest({ url: CLEAR_PATH, method: "POST" }));
+		assert.equal(cleared.status, 200);
+		assert.equal(JSON.parse(cleared.body).value.cleared, true, "turning a default splash off is a change, not a no-op");
 		const table = [{ kind: "global", name: "x", value: 1 }];
 		inject[0](table);
-		assert.deepEqual(table, [{ kind: "global", name: "x", value: 1 }], "a user with no splash must be exposed to none of this");
+		assert.deepEqual(table, [{ kind: "global", name: "x", value: 1 }], "a user who switched the splash off must be exposed to none of this");
+		const media = await callHost(splash, makeRequest({ url: MEDIA_PATH, method: "GET" }));
+		assert.equal(media.status, 404);
+		// Off is remembered as off, not as "never chose anything" — otherwise the
+		// next version's default would quietly come back.
+		const clearedAgain = await callHost(splash, makeRequest({ url: CLEAR_PATH, method: "POST" }));
+		assert.equal(JSON.parse(clearedAgain.body).value.cleared, false);
 	});
 });
 
@@ -644,7 +681,10 @@ test("a stored name that is not our own shape is treated as no splash", async ()
 	await withTempHome(async () => {
 		const { route, splash, inject } = await mount({});
 		for (const planted of ["../../etc/passwd", "media-x.png", "media-abc-01234567.exe", ""]) {
-			await callHost(route, makeRequest({}), JSON.stringify({ method: "set", patch: { "splash.media": planted } }));
+			// `splash.source` says the user's own clip is the choice, so a name
+			// that fails the shape check is a broken choice — not a reason to
+			// fall back to the built-in clip behind the user's back.
+			await callHost(route, makeRequest({}), JSON.stringify({ method: "set", patch: { "splash.media": planted, "splash.source": "custom" } }));
 			const table = [];
 			inject[0](table);
 			assert.deepEqual(table, [], `a stored value of ${JSON.stringify(planted)} must not produce a cover`);
@@ -654,11 +694,26 @@ test("a stored name that is not our own shape is treated as no splash", async ()
 	});
 });
 
+test("an unreadable stored name falls back to the built-in clip, not to a path", async () => {
+	// The upgrade path: a document written before `splash.source` existed carries
+	// only `splash.media`. A garbage value there must land on the built-in clip,
+	// and the bytes served must be the package's own — never the stored string.
+	await withTempHome(async () => {
+		const { route, splash } = await mount({});
+		await callHost(route, makeRequest({}), JSON.stringify({ method: "set", patch: { "splash.media": "../../etc/passwd" } }));
+		const res = await callHost(splash, makeRequest({ url: MEDIA_PATH, method: "GET" }));
+		assert.equal(res.status, 200);
+		assert.equal(res.headers["x-lumen-splash-source"], "builtin");
+		assert.equal(res.bytes.length, BUILTIN_MEDIA_BYTES, "the served bytes are not the packaged clip");
+	});
+});
+
 // ── the media route ───────────────────────────────────────────────────────
 
-test("the media route is 404 until a splash is configured", async () => {
+test("the media route is 404 once the splash is switched off", async () => {
 	await withTempHome(async () => {
 		const { splash } = await mount({});
+		await callHost(splash, makeRequest({ url: CLEAR_PATH, method: "POST" }));
 		const res = await callHost(splash, makeRequest({ url: MEDIA_PATH, method: "GET" }));
 		assert.equal(res.status, 404);
 	});
@@ -794,6 +849,35 @@ test("replacing a splash removes the bytes it replaced", async () => {
 	});
 });
 
+test("switching to the built-in clip replaces the user's own, like an upload does", async () => {
+	await withTempHome(async (dir) => {
+		const { route, splash } = await mount({});
+		const mediaName = await uploadPng(splash);
+		const res = await callHost(splash, makeRequest({ url: BUILTIN_PATH, method: "POST" }));
+		assert.equal(res.status, 200);
+		assert.equal(JSON.parse(res.body).value.source, "builtin");
+		assert.ok(!fs.existsSync(path.join(dir, "lumen-media", mediaName)), "a clip nothing points at would sit on disk forever");
+		const served = await callHost(splash, makeRequest({ url: MEDIA_PATH, method: "GET" }));
+		assert.equal(served.headers["x-lumen-splash-source"], "builtin");
+		assert.equal(served.bytes.length, BUILTIN_MEDIA_BYTES);
+		const preferences = JSON.parse((await callHost(route, makeRequest({}), JSON.stringify({ method: "get" }))).body).value;
+		assert.ok(!("splash.media" in preferences), "the state still names a file that is gone");
+	});
+});
+
+test("an upload wins over the built-in clip", async () => {
+	await withTempHome(async () => {
+		const { route, splash } = await mount({});
+		const mediaName = await uploadPng(splash);
+		const preferences = JSON.parse((await callHost(route, makeRequest({}), JSON.stringify({ method: "get" }))).body).value;
+		assert.equal(preferences["splash.source"], "custom", "the upload did not take ownership of the source");
+		const served = await callHost(splash, makeRequest({ url: MEDIA_PATH, method: "GET" }));
+		assert.equal(served.headers["x-lumen-splash-source"], "custom");
+		assert.equal(served.headers["content-type"], "image/png");
+		assert.ok(served.bytes.equals(PNG), `the built-in clip was served instead of ${mediaName}`);
+	});
+});
+
 test("clearing forgets the splash and removes its bytes", async () => {
 	await withTempHome(async (dir) => {
 		const { route, splash } = await mount({});
@@ -818,9 +902,12 @@ test("an unsupported media type is refused before anything is written", async ()
 			assert.equal(res.status, 415, `${JSON.stringify(type)} should be refused`);
 		}
 		assert.ok(!fs.existsSync(path.join(dir, "lumen-media")), "a refused upload must not leave a directory behind");
+		// The default splash is still standing, and it is still the clip: a
+		// refused upload must not have turned the cover into an image cover.
 		const table = [];
 		inject[0](table);
-		assert.deepEqual(table, []);
+		const style = table.find((row) => row.kind === "style").text;
+		assert.ok(!style.includes("background-image"), "a refused upload still changed what the cover paints");
 	});
 });
 
