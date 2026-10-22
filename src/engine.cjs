@@ -92,8 +92,15 @@ const CANVAS_VAR = "--lumen-canvas";
 const PANEL_VAR = "--lumen-panel";
 /** Custom property carrying the hairline that closes the sidebar's edge. */
 const SEAM_VAR = "--lumen-seam";
-/** How much of the chrome colour the scrim puts back, 0..1. */
-const PANEL_SCRIM = 0.22;
+/**
+ * How much of the chrome colour the scrim puts back, 0..1.
+ *
+ * Chosen by eye against a bright wallpaper rather than derived: 0.22 read as a
+ * faded patch next to the content, 0.46 as an opaque board on top of the photo.
+ * 0.34 is where the sidebar reads as a panel and the picture still shows inside
+ * it.
+ */
+const PANEL_SCRIM = 0.34;
 
 /**
  * A neutral film-grain tile. Generated rather than shipped: an SVG turbulence

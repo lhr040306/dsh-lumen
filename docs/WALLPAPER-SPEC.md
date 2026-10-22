@@ -349,7 +349,7 @@ Windows 标题栏布局下，宿主自己那点分隔在洗色落地的一刻就
 
 | 名字 | 内容 | 谁写 | 谁读 |
 | --- | --- | --- | --- |
-| `--lumen-panel` | 侧栏填充色（`--dsw-specific-sidebar-fill`）的 22% 半透明 | 引擎 `publishPaint` 写到 `:root` | `CHROME_SEAM_CSS` |
+| `--lumen-panel` | 侧栏填充色（`--dsw-specific-sidebar-fill`）的 34% 半透明 | 引擎 `publishPaint` 写到 `:root` | `CHROME_SEAM_CSS` |
 | `--lumen-seam` | 正文色（`--dsw-alias-label-primary`）的 14%，作细线 | 同上 | 同上 |
 
 ```
@@ -357,12 +357,12 @@ html[data-windows-titlebar][data-dsh-lumen-active] [class*="sidebarCol"]{backgro
 html[data-windows-titlebar][data-dsh-lumen-active] [class*="frame"]:before{background-color:var(--lumen-panel);}
 ```
 
-- **只有一层。** 两个列背后的 frame 是透明的，所以这 22% 只落一次，不构成 §6.2 说的那种叠加。
+- **只有一层。** 两个列背后的 frame 是透明的，所以这 34% 只落一次，不构成 §6.2 说的那种叠加。
 - 颜色取的是侧栏与正文自己的值，不是画布色：浅色主题下侧栏变"奶白"、深色主题下变"更暗"，与 app 其它表面同一个方向。细线同理——正文色在浅色下是深的、深色下是浅的，插件不需要知道当前是哪套主题。
 - 标题栏那 40px 也跟着上色：宿主布局里它和侧栏本来就是同一个填充，不上的话左边缘会在 y=40 处出现一道台阶。
 - **macOS 有意排除。** `[data-platform=darwin]` 下宿主自己给了侧栏渐变与 `centerCol` 的 `border-left`，接缝本来就在，只有 Windows 的 chrome 缺这一条——这正是 `[data-windows-titlebar]` 标记的东西。
 - 宿主的类名带构建哈希（`BynINW_sidebarCol`），所以选择器匹配**局部名**而不是哈希，并且只在本插件正在画图时（`data-dsh-lumen-active`）生效。宿主改名后这两条规则不再命中，画面回到加它们之前——这是唯一值得要的失败模式。
-- 强度是 `PANEL_SCRIM`（22%）。太淡了看不出隔离，太浓了就是一块半透明板子压住照片；22% 加一条细线是两者之间的位置。
+- 强度是 `PANEL_SCRIM`（34%）。太淡了看不出隔离（22% 在亮壁纸上仍读作一块发白的区域），太浓了就是一块板子压住照片（46% 已经把照片压成轮廓）；34% 加一条细线是两者之间的位置。
 
 
 
