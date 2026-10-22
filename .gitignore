@@ -13,3 +13,6 @@ workspace.xml
 
 # 本地预览服务写出的运行时状态（scripts/serve.cjs 的默认 state 文件）
 preview/.state/
+
+# 本地临时产出（效果预览图、导出的中间物），属于过程不是产物
+output/
