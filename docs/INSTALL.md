@@ -11,7 +11,7 @@ DSH 的插件安装入口统一接受 `<来源>`，`<来源>` 有四种形态，
 | 来源 | `<来源>` | 适合 |
 | --- | --- | --- |
 | GitHub 仓库地址 | `https://github.com/lhr040306/dsh-lumen` | 普通用户（推荐） |
-| GitHub 固定版本 | `github:lhr040306/dsh-lumen#v1.2.0`（或 `#<commit>`） | 需要可复现的版本 |
+| GitHub 固定版本 | `github:lhr040306/dsh-lumen#v1.2.1`（或 `#<commit>`） | 需要可复现的版本 |
 | 本地目录 | 仓库**根目录**的绝对路径 | 自己改代码（开发） |
 | npm 包 | `dsh-lumen` | **尚未发布**，发布后才可用 |
 
@@ -42,14 +42,18 @@ CLI 等价写法：
 dsh plugin --profile web add github:lhr040306/dsh-lumen
 ```
 
-钉一个版本可以得到可复现的版本（`#` 后面可以是本仓库的标签 `v1.2.0`，也可以是任意 commit sha）：
+钉一个版本可以得到可复现的版本（`#` 后面可以是本仓库的标签 `v1.2.1`，也可以是任意 commit sha）：
 
 ```sh
-dsh plugin --profile web add github:lhr040306/dsh-lumen#v1.2.0
+dsh plugin --profile web add github:lhr040306/dsh-lumen#v1.2.1
 dsh plugin --profile web add github:lhr040306/dsh-lumen#<commit>
 ```
 
 > GitHub 安装要求这台机器能解析并访问 `github.com`。装不通时先在浏览器里打开一次仓库地址确认网络，再回来看[第八节](#八故障排查)。
+
+**为什么这条路比一般插件慢。** 一般插件是 npm 包，安装时下载的是发布者 `files` 白名单里的那些文件，走 registry 的 CDN，并且按 integrity 进本地 store 缓存。`github:` 依赖不是这样：它下载的是 **codeload 打的整仓 tarball**，没有白名单可讲，`tests/`、`preview/`、`scripts/`、`src/`、`docs/` 全在里面；`package.json` 的 `files` 对它**不生效**。`.gitattributes` 的 `export-ignore` 也不生效——GitHub 的 archive 不从你的 `.gitattributes` 生成，这一点是实测的（`twbs/bootstrap` 的 `site/` 明明标了 `export-ignore`，codeload 的包里 496 条 `site/` 条目一条不少）。
+
+因此这条路上能做的只有**真减体积**（当前整仓 2.06 MB，其中媒体 1.24 MB 已经压过一轮，见 `SPLASH-SPEC.md` §9.6 与 `WALLPAPER-SPEC.md` §3.2.1），以及**别每次重装都重下**：锁文件钉到 commit 之后，pnpm 命中 store 就不再走网络。
 
 装完**重启 DSH**，然后看[第五节](#五验证)。
 

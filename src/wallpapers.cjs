@@ -207,7 +207,7 @@ const RECIPES = [
 	photoRecipe({
 		id: "whale-point-half",
 		name: { zh: "夜潮", en: "Night Tide" },
-		file: "whale-point-half.jpg",
+		file: "whale-point-half.webp",
 		tags: ["whale", "night"],
 		// Every luminance below is a measurement of the shipped file, not a
 		// guess: 64x64 area average, WCAG relative luminance, upper quartile —
@@ -219,7 +219,7 @@ const RECIPES = [
 	photoRecipe({
 		id: "whale-starlit",
 		name: { zh: "星海", en: "Starlit" },
-		file: "whale-starlit.jpg",
+		file: "whale-starlit.webp",
 		tags: ["whale", "night"],
 		luminance: 0.085,
 		base: { r: 39, g: 51, b: 78 },
@@ -228,7 +228,7 @@ const RECIPES = [
 	photoRecipe({
 		id: "whale-sunset",
 		name: { zh: "黄昏", en: "Dusk" },
-		file: "whale-sunset.jpg",
+		file: "whale-sunset.webp",
 		tags: ["whale", "warm"],
 		// The brightest of the four, and the default on a fresh install — which
 		// is why its complexity is the highest: it is the one picture that most
@@ -240,7 +240,7 @@ const RECIPES = [
 	photoRecipe({
 		id: "whale-point-full",
 		name: { zh: "深蓝", en: "Deep Blue" },
-		file: "whale-point-full.jpg",
+		file: "whale-point-full.webp",
 		tags: ["whale", "blue"],
 		luminance: 0.133,
 		base: { r: 82, g: 103, b: 150 },

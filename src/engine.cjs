@@ -66,6 +66,8 @@ const WAKE_CHECK_MS = 60000;
 const BLUR_OVERSCALE = 1.06;
 /** Extra blur on the `blur` fit's bleed layer, px. */
 const BLEED_BLUR = 48;
+/** Slack on the cross-fade hint timer, ms — covers the paint of the last frame. */
+const FADE_HINT_SLACK_MS = 120;
 /** WCAG AA body-text contrast the readability floor targets. */
 const CONTRAST_TARGET = 4.5;
 
@@ -80,10 +82,21 @@ const NOISE_SVG = "<svg xmlns='http://www.w3.org/2000/svg' width='180' height='1
 const NOISE_URI = `url("data:image/svg+xml,${encodeURIComponent(NOISE_SVG)}")`;
 
 /** The stylesheet the engine owns. Kept small and fully namespaced. */
+/**
+ * `will-change: opacity` is deliberately NOT in here.
+ *
+ * It used to be, permanently, on both picture slots — a promise to the
+ * compositor that these two elements will animate. A promise a browser keeps by
+ * promoting the layer, and a full-viewport layer is tens of megabytes of
+ * texture each: the plugin held two of them for as long as it was loaded, on
+ * every page, to make a cross-fade that happens once per rotation interval
+ * cheaper. The hint is now set on the two slots when a fade is armed and taken
+ * away when it finishes (see `armFadeHint`), which is the same smoothness for
+ * the fraction of a second it is worth anything.
+ */
 const ENGINE_CSS = `
 [${ACTIVE_ATTR}="root"]{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;contain:strict;}
 [${ACTIVE_ATTR}="bleed"],[${ACTIVE_ATTR}="slot-0"],[${ACTIVE_ATTR}="slot-1"]{position:absolute;inset:0;background-repeat:no-repeat;background-position:center;background-size:cover;transition-property:opacity;transition-timing-function:cubic-bezier(0.4,0,0.2,1);}
-[${ACTIVE_ATTR}="slot-0"],[${ACTIVE_ATTR}="slot-1"]{will-change:opacity;}
 [${ACTIVE_ATTR}="veil"]{position:absolute;inset:0;background:transparent;transition:background-color 220ms ease;}
 [${ACTIVE_ATTR}="grain"]{position:absolute;inset:0;background-image:${NOISE_URI};background-repeat:repeat;mix-blend-mode:overlay;opacity:0;transition:opacity 240ms ease;}
 @media (prefers-reduced-motion: reduce){[${ACTIVE_ATTR}="slot-0"],[${ACTIVE_ATTR}="slot-1"]{transition-duration:0ms !important;}}
@@ -291,6 +304,8 @@ function createEngine(options) {
 	let applyingOverride = false;
 	let applying = false;
 	let timer = null;
+	/** Timer that retires the cross-fade's `will-change` hint, ms id, or null. */
+	let fadeHintTimer = null;
 	let onThemeChange = null;
 	let onVisibility = null;
 	let disposed = false;
@@ -476,6 +491,44 @@ function createEngine(options) {
 	}
 
 	/**
+	 * Arm the cross-fade's compositor hint, and take it away again afterwards.
+	 *
+	 * `will-change: opacity` asks the browser to promote the element to its own
+	 * compositing layer — for a full-viewport picture, tens of megabytes of
+	 * texture. That is worth paying for while two pictures blend over a second,
+	 * and pure cost for everything in between; on a layer whose entire job is to
+	 * sit behind an application, "in between" is all of the time.
+	 *
+	 * A timer rather than a `transitionend` listener, deliberately: the event does
+	 * not fire when the transition is interrupted (a theme change mid-fade, the
+	 * tab going to the background), and the hint left armed in that case is
+	 * exactly the state this exists to avoid. The slack covers the paint of the
+	 * last frame.
+	 */
+	function armFadeHint(durationMs) {
+		dropFadeHint();
+		for (const slot of slots) {
+			if (slot === null || slot === undefined) continue;
+			slot.style.willChange = "opacity";
+		}
+		fadeHintTimer = setTimeout(dropFadeHint, durationMs + FADE_HINT_SLACK_MS);
+	}
+
+	/** Retire the hint immediately. Idempotent, and safe before the slots exist. */
+	function dropFadeHint() {
+		if (fadeHintTimer !== null) {
+			try {
+				clearTimeout(fadeHintTimer);
+			} catch {}
+			fadeHintTimer = null;
+		}
+		for (const slot of slots) {
+			if (slot === null || slot === undefined) continue;
+			slot.style.willChange = "";
+		}
+	}
+
+	/**
 	 * Render a state.
 	 *
 	 * TWO DIFFERENT KINDS OF CHANGE, DELIBERATELY SEPARATED.
@@ -519,6 +572,11 @@ function createEngine(options) {
 			const renderKey = `${identity}|${JSON.stringify(state.tuning)}|${wash.fit}|${wash.blur}|${wash.position}`;
 			const needsWork = renderKey !== lastRenderKey;
 			const needsCrossfade = identity !== lastIdentity;
+			// Whether there is a picture to fade *out of*. On the first paint of a
+			// page there is none — and painting the unused slot anyway costs a
+			// second full-viewport layer of the same bytes on the one frame where
+			// the application is still starting up.
+			const hadPicture = lastIdentity !== null;
 			lastRenderKey = renderKey;
 			lastIdentity = identity;
 
@@ -541,7 +599,7 @@ function createEngine(options) {
 			// The slot to paint into: the hidden one on a cross-fade, the visible
 			// one when only parameters moved.
 			const target = needsCrossfade ? slots[1 - front] : slots[front];
-			const outgoing = needsCrossfade ? slots[front] : null;
+			const outgoing = needsCrossfade && hadPicture ? slots[front] : null;
 			for (const slot of [target, outgoing]) {
 				if (slot === null || slot === undefined) continue;
 				slot.style.backgroundImage = background.image;
@@ -551,6 +609,11 @@ function createEngine(options) {
 				slot.style.transitionDuration = `${transition}ms`;
 			}
 			if (needsCrossfade && target !== null && target !== undefined) {
+				// The compositor hint is armed for the length of the fade only. A
+				// fade that does not animate (boot, theme change, reduced motion)
+				// gets no hint at all — there is nothing to smooth.
+				if (transition > 0) armFadeHint(transition);
+				else dropFadeHint();
 				target.style.opacity = "0";
 				// Force a style flush so the 0 -> 1 transition actually plays; without
 				// it the browser coalesces both writes and the picture pops in.
@@ -584,6 +647,7 @@ function createEngine(options) {
 		lastIdentity = null;
 		lastRenderKey = null;
 		activeItem = null;
+		dropFadeHint();
 		clearWash();
 		if (doc === null) return;
 		if (doc.documentElement && typeof doc.documentElement.removeAttribute === "function") {

@@ -8,7 +8,7 @@
 
 <sub>2 套程序化生成的弥散光壁纸 &nbsp;·&nbsp; 4 张随包插画 &nbsp;·&nbsp; 本地图片 / 图片地址 / 渐变<br>按间隔 · 整点 · 每日 · 每次会话自动换图，带交叉淡入<br>另有随包开屏短片：装好即默认启用，可换成自己的素材，也可以直接关掉</sub>
 
-[![version](https://img.shields.io/badge/version-1.2.0-534AB7)](package.json)
+[![version](https://img.shields.io/badge/version-1.2.1-534AB7)](package.json)
 [![license](https://img.shields.io/badge/license-MIT-534AB7)](LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A5%2018-3B6D11)](package.json)
 [![tests](https://img.shields.io/badge/tests-373%20passing-0F6E56)](tests)
@@ -32,7 +32,7 @@
 
 <a href="media/splash.mp4"><img src=".github/assets/splash-poster.jpg" width="720" alt="开屏短片：鲸鱼娘抱住毛球，右侧是 DeepSeek Harness 字样"></a>
 
-<sub>4.5 秒 · 2.0 MB · 随包内置，装好就播 &nbsp;—&nbsp; 点封面播放</sub>
+<sub>4.5 秒 · 0.6 MB · 随包内置，装好就播 &nbsp;—&nbsp; 点封面播放</sub>
 
 </div>
 
@@ -49,24 +49,24 @@
 <table>
   <tr>
     <td align="center" width="50%">
-      <a href="media/wallpapers/whale-sunset.jpg"><img src="media/wallpapers/whale-sunset.jpg" width="440" alt="黄昏 · Dusk"></a><br>
+      <a href="media/wallpapers/whale-sunset.webp"><img src="media/wallpapers/whale-sunset.webp" width="440" alt="黄昏 · Dusk"></a><br>
       <b>黄昏</b> &nbsp;Dusk &nbsp;<code>whale-sunset</code><br>
       <sub>楼顶、落日与城市天际线 &nbsp;—&nbsp; <b>首次安装看到的就是这张</b></sub>
     </td>
     <td align="center" width="50%">
-      <a href="media/wallpapers/whale-starlit.jpg"><img src="media/wallpapers/whale-starlit.jpg" width="440" alt="星海 · Starlit"></a><br>
+      <a href="media/wallpapers/whale-starlit.webp"><img src="media/wallpapers/whale-starlit.webp" width="440" alt="星海 · Starlit"></a><br>
       <b>星海</b> &nbsp;Starlit &nbsp;<code>whale-starlit</code><br>
       <sub>月夜海面，水母悬在暗处</sub>
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
-      <a href="media/wallpapers/whale-point-half.jpg"><img src="media/wallpapers/whale-point-half.jpg" width="440" alt="夜潮 · Night Tide"></a><br>
+      <a href="media/wallpapers/whale-point-half.webp"><img src="media/wallpapers/whale-point-half.webp" width="440" alt="夜潮 · Night Tide"></a><br>
       <b>夜潮</b> &nbsp;Night Tide &nbsp;<code>whale-point-half</code><br>
       <sub>深蓝海面上的回头一指，最"潮水"的一张</sub>
     </td>
     <td align="center" width="50%">
-      <a href="media/wallpapers/whale-point-full.jpg"><img src="media/wallpapers/whale-point-full.jpg" width="440" alt="深蓝 · Deep Blue"></a><br>
+      <a href="media/wallpapers/whale-point-full.webp"><img src="media/wallpapers/whale-point-full.webp" width="440" alt="深蓝 · Deep Blue"></a><br>
       <b>深蓝</b> &nbsp;Deep Blue &nbsp;<code>whale-point-full</code><br>
       <sub>最安静的一张，几乎只剩蓝和一点点星光</sub>
     </td>
@@ -171,7 +171,7 @@ CLI 等价写法：
 dsh plugin --profile web add github:lhr040306/dsh-lumen
 ```
 
-要钉住版本，就在地址后面加标签或 commit（`#v1.2.0`，或任意 commit sha）。装完**重启 DSH**，然后打开 **设置 → 壁纸**。
+要钉住版本，就在地址后面加标签或 commit（`#v1.2.1`，或任意 commit sha）。装完**重启 DSH**，然后打开 **设置 → 壁纸**。
 
 > [!WARNING]
 > 桌面端的 `desktop` profile 由 Electron 应用独占管理，CLI 会硬拒 —— 桌面端请走客户端自带的插件管理入口。

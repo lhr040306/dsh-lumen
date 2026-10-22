@@ -4,7 +4,7 @@
 
 其中的数字都不是从注释里抄的，而是从 `src/` 里的导出常量与测试用的边界值读出来的。改动源码后请一并更新本文（`tests/state.test.cjs` 会断言持久化字段列表与状态自身字段列表完全一致，那是最容易漂移的一处）。
 
-**版本**：`schema 1` · 插件 `1.2.0`
+**版本**：`schema 1` · 插件 `1.2.1`
 
 ---
 
@@ -98,7 +98,7 @@ interface WallpaperItem {
 插画在数据模型里就是一个 `recipe` 条目——`ref` 是 id，没有新的 `kind`。面板的 chip 行、播放列表、轮播调度、洗色求解与持久化全都已经工作在"一个等于内置 id 的 `ref`"上，因此加一种素材不需要它们任何一处改动。差别只在 `build()` 内部：
 
 ```js
-build() { return { layers: ['url("/lumen/wallpaper/whale-sunset.jpg")'], base: {r,g,b} }; }
+build() { return { layers: ['url("/lumen/wallpaper/whale-sunset.webp")'], base: {r,g,b} }; }
 ```
 
 也就是说插画是**恰好只有一层 `url()` 的配方**。由此带来三条明确的差异，都写在下面：
@@ -111,16 +111,24 @@ build() { return { layers: ['url("/lumen/wallpaper/whale-sunset.jpg")'], base: {
 
 ### 3.2 插画的实测亮度
 
-四个数字不是猜的：按 `image.sampleLuminance` 的同一套定义——64×64 面积平均、WCAG 相对亮度、**上四分位**——在随包的 JPEG 上量出来：
+四个数字不是猜的：按 `image.sampleLuminance` 的同一套定义——64×64 面积平均、WCAG 相对亮度、**上四分位**——在随包的 WebP 上量出来：
 
 | id | 文件 | 实测亮度（p75） | 平均色 `base` |
 | --- | --- | --- | --- |
-| `whale-point-half` | `whale-point-half.jpg` | 0.132 | `rgb(78, 96, 133)` |
-| `whale-starlit` | `whale-starlit.jpg` | 0.085 | `rgb(39, 51, 78)` |
-| `whale-sunset` | `whale-sunset.jpg` | 0.245 | `rgb(126, 110, 130)` |
-| `whale-point-full` | `whale-point-full.jpg` | 0.133 | `rgb(82, 103, 150)` |
+| `whale-point-half` | `whale-point-half.webp` | 0.132 | `rgb(78, 96, 133)` |
+| `whale-starlit` | `whale-starlit.webp` | 0.085 | `rgb(39, 51, 78)` |
+| `whale-sunset` | `whale-sunset.webp` | 0.245 | `rgb(126, 110, 130)` |
+| `whale-point-full` | `whale-point-full.webp` | 0.133 | `rgb(82, 103, 150)` |
 
-实测值取代了 `NEUTRAL_LUMINANCE`（0.42）这个中性常数——那是对**拿不到像素**的图片（远程地址）的兜底，而随包的图片自己带着像素，没有理由用常数凑。`base` 是图片自身的平均色，用作 JPEG 加载完成前的那一层底色，避免黑闪。
+实测值取代了 `NEUTRAL_LUMINANCE`（0.42）这个中性常数——那是对**拿不到像素**的图片（远程地址）的兜底，而随包的图片自己带着像素，没有理由用常数凑。`base` 是图片自身的平均色，用作图片加载完成前的那一层底色，避免黑闪。
+
+### 3.2.1 为什么是 WebP，而不是原图的 JPEG
+
+插画原先以 JPEG（q88，1536×1024，合计 1.16 MB）随包。同一批画面换成 WebP q82 后是 **638 KB（-45%）**，1:1 裁剪对比看不出差别；亮度实测同步重跑过，四张的偏移都在 **0.007 以内**（偏暗），低于洗色求解的一个显示步，所以表里的数字没有重写。
+
+这不是"顺手压一下"：这四张图占了整包体积的一半以上，而它们要跟着**每一次安装**下载一遍。取舍的边界是**不改分辨率**（1536 宽在 1920 屏上本来就是略微放大，再缩就真的糊了）和**不降到 q75 以下**（画面里那几片晚霞是最先出块的地方）。
+
+宿主那条白名单 `^[a-z0-9-]+\.(jpg|jpeg|png|webp)$` 本来就允许 webp，所以这一改动没有触碰路由、MIME 表或校验逻辑——只有文件名和四个 `file:` 字段变了。
 
 ### 3.3 退役配方
 
@@ -569,7 +577,7 @@ interface Schedule {
 
 | 字段 | 含义 |
 | --- | --- |
-| `plugin` / `build` / `schema` | `"dsh-lumen"` / `"1.2.0"` / `1` |
+| `plugin` / `build` / `schema` | `"dsh-lumen"` / `"1.2.1"` / `1` |
 | `status` | `booting` · `ready` · `degraded` · `disposed` |
 | `warnings` | `[dsh-lumen]` 前缀的告警行数组 |
 | `health` | `{ hostAvailable, hostReason, lastError, hasStorage }` |
@@ -593,6 +601,8 @@ interface Schedule {
 | `grain` | 颗粒层，`mix-blend-mode: overlay` |
 
 样式表挂在 `dsh-lumen-style`（`STYLE_ID`）。
+
+**两个槽位不常驻合成层。** 样式表里没有 `will-change: opacity`：那是一个让浏览器把元素单独提层的请求，而这两个元素是全屏的（一张视口大小的纹理按 RGBA 算是几十 MB），交叉淡入却只在换图时发生一次。改为在淡入开始前挂上、`transitionMs + 120ms` 之后撤掉（`armFadeHint` / `dropFadeHint`）；`instant` 渲染（启动首帧、主题切换、`prefers-reduced-motion`）根本不挂。首帧另有一条：**页面上还没有上一张图时，另一只槽位不写 `background-image`**——那次写只会让浏览器多栅格化一层同一张图片，而它此刻正被启动中的界面对着抢资源。
 
 根节点的 `z-index: -1` 意味着它在应用**之前**绘制——所以它盖不住任何界面元素，也解释了为什么"画布必须半透明"是壁纸可见的前提（`--pg-bg` 那种预览工具条自己的底色只有在壁纸渲染失败时才会露出来）。
 

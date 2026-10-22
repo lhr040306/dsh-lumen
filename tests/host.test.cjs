@@ -945,25 +945,25 @@ test("an unknown splash path is 404, and the wrong method is 405", async () => {
 test("the illustration route serves a bundled picture byte-for-byte", async () => {
 	await withTempHome(async () => {
 		const { wallpapers } = await mount({});
-		const file = path.join(__dirname, "..", "media", "wallpapers", "whale-sunset.jpg");
+		const file = path.join(__dirname, "..", "media", "wallpapers", "whale-sunset.webp");
 		const bytes = fs.statSync(file).size;
 
-		const res = await callHost(wallpapers, makeRequest({ url: `${WALLPAPER_PATH}/whale-sunset.jpg`, method: "GET" }));
+		const res = await callHost(wallpapers, makeRequest({ url: `${WALLPAPER_PATH}/whale-sunset.webp`, method: "GET" }));
 		assert.equal(res.status, 200);
-		assert.equal(res.headers["content-type"], "image/jpeg");
+		assert.equal(res.headers["content-type"], "image/webp");
 		assert.equal(res.headers["content-length"], String(bytes));
 		assert.equal(res.headers["cache-control"], "no-cache", "a long max-age would outlive the version that filled it");
 		assert.ok(res.headers.etag, "no validator means no way to notice a changed picture");
 		assert.equal(res.bytes.length, bytes, "the body is not the file");
 
-		const head = await callHost(wallpapers, makeRequest({ url: `${WALLPAPER_PATH}/whale-sunset.jpg`, method: "HEAD" }));
+		const head = await callHost(wallpapers, makeRequest({ url: `${WALLPAPER_PATH}/whale-sunset.webp`, method: "HEAD" }));
 		assert.equal(head.status, 200);
 		assert.equal(head.headers["content-length"], String(bytes));
 		assert.equal(head.bytes.length, 0, "HEAD must not send a body");
 
 		const cached = await callHost(
 			wallpapers,
-			makeRequest({ url: `${WALLPAPER_PATH}/whale-sunset.jpg`, method: "GET", headers: { "if-none-match": res.headers.etag } })
+			makeRequest({ url: `${WALLPAPER_PATH}/whale-sunset.webp`, method: "GET", headers: { "if-none-match": res.headers.etag } })
 		);
 		assert.equal(cached.status, 304);
 		assert.equal(cached.bytes.length, 0);
@@ -977,7 +977,12 @@ test("the illustration route refuses every name the package does not ship", asyn
 			`${WALLPAPER_PATH}/../package.json`,
 			`${WALLPAPER_PATH}/..%2fpackage.json`,
 			`${WALLPAPER_PATH}/whale-sunset.jpg/extra`,
-			`${WALLPAPER_PATH}/WHALE-SUNSET.jpg`,
+			// The name this package used to ship. Renaming the file renamed the
+			// allowlist with it, and the old name must be a 404 rather than a
+			// compatibility alias nobody asked for.
+			`${WALLPAPER_PATH}/whale-sunset.jpg`,
+			`${WALLPAPER_PATH}/whale-sunset.webp.webp`,
+			`${WALLPAPER_PATH}/WHALE-SUNSET.webp`,
 			`${WALLPAPER_PATH}/whale-sunset.svg`,
 			WALLPAPER_PATH,
 			`${WALLPAPER_PATH}/`
@@ -986,7 +991,7 @@ test("the illustration route refuses every name the package does not ship", asyn
 			const res = await callHost(wallpapers, makeRequest({ url, method: "GET" }));
 			assert.equal(res.status, 404, `${url} should not be served`);
 		}
-		const wrongMethod = await callHost(wallpapers, makeRequest({ url: `${WALLPAPER_PATH}/whale-sunset.jpg`, method: "POST" }));
+		const wrongMethod = await callHost(wallpapers, makeRequest({ url: `${WALLPAPER_PATH}/whale-sunset.webp`, method: "POST" }));
 		assert.equal(wrongMethod.status, 405);
 	});
 });

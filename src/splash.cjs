@@ -429,10 +429,16 @@ function createSplash(deps) {
 		clip.setAttribute("muted", "");
 		clip.setAttribute("playsinline", "");
 		clip.setAttribute("autoplay", "");
+		// The clip is the whole splash, so its bytes are as urgent as the page
+		// itself: `preload` is set as an attribute and as a property for the same
+		// reason `autoplay` is, and `auto` is the only value that does not ask the
+		// engine to guess how much of a four-second file to fetch first.
+		clip.setAttribute("preload", "auto");
 		clip.setAttribute("aria-hidden", "true");
 		clip.muted = true;
 		clip.playsInline = true;
 		clip.autoplay = true;
+		clip.preload = "auto";
 		clip.style.width = "100%";
 		clip.style.height = "100%";
 		clip.style.objectFit = "cover";
