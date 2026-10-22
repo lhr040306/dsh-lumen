@@ -163,15 +163,31 @@ const FULL_WINDOW_VIEW_CSS = `body>[role="dialog"][aria-modal="true"]:has(>heade
  * so the seam is only missing on the Windows chrome — exactly what
  * `[data-windows-titlebar]` marks.
  *
- * The host's class names carry a build hash (`BynINW_sidebarCol`), so these
- * selectors match the local name instead, and only while this plugin is
- * painting — `[data-dsh-lumen-active]` gates both rules. A host rename makes
- * them stop matching, and the window looks like it did before they existed;
- * that is the only failure mode worth having here.
+ * WHY THE PANEL FADES IN FROM THE SIDEBAR'S TOP EDGE
+ *
+ * The titlebar strip sits above both columns and is painted the same fill as
+ * the sidebar, so the first version tinted it too, full width. That is wrong on
+ * a wallpaper: the strip is a heavy veil over the picture, so on a dark picture
+ * it turns into a light band lying across the top of the content, ending in a
+ * hard horizontal edge — a rectangle that reads as a rendering fault rather
+ * than as chrome. Tinting only the sidebar's own share of the strip would fix
+ * it and cannot be expressed in CSS: the share is the column's width, which is
+ * resizable and only known at runtime.
+ *
+ * So the panel starts where the sidebar starts and fades in over one titlebar
+ * height. The strip stays clear, continuous with the content below it; the
+ * sidebar's top edge has no step to hide, because at its very first pixel the
+ * scrim is still fully transparent. The hairline starts at the same edge, which
+ * is exactly where the host's own `border-right` starts in the stock layout.
+ *
+ * The host's class name carries a build hash (`BynINW_sidebarCol`), so this
+ * selector matches the local name instead, and only while this plugin is
+ * painting — `[data-dsh-lumen-active]` gates it. A host rename makes it stop
+ * matching, and the window looks like it did before it existed; that is the
+ * only failure mode worth having here.
  */
 const CHROME_SEAM_CSS = `
-html[data-windows-titlebar][${ACTIVE_MARK}] [class*="sidebarCol"]{background-color:var(${PANEL_VAR});box-shadow:inset -1px 0 0 var(${SEAM_VAR});}
-html[data-windows-titlebar][${ACTIVE_MARK}] [class*="frame"]:before{background-color:var(${PANEL_VAR});}
+html[data-windows-titlebar][${ACTIVE_MARK}] [class*="sidebarCol"]{background-image:linear-gradient(to bottom,transparent 0,var(${PANEL_VAR}) 40px);box-shadow:inset -1px 0 0 var(${SEAM_VAR});}
 `;
 
 /** The stylesheet the engine owns. Kept small and fully namespaced. */

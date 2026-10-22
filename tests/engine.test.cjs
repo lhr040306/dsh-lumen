@@ -517,7 +517,11 @@ test("the sidebar gets its own tint and a hairline back while the wash is on", (
 
 	const css = env.document.getElementById(STYLE_ID).textContent;
 	assert.ok(css.includes(`[class*="sidebarCol"]`), "the seam rule is missing from the stylesheet");
-	assert.ok(css.includes(`[class*="frame"]:before`), "the titlebar strip is not part of the panel");
+	assert.ok(css.includes(`linear-gradient(to bottom,transparent 0`), "the panel does not fade in at the sidebar's own top edge");
+	// The titlebar strip used to be tinted with it, full width. That veil lies
+	// across the top of the content and ends in a hard edge there, which reads
+	// as a fault on a picture; it has to stay clear.
+	assert.ok(!css.includes(`[class*="frame"]:before`), "the titlebar strip is tinted again");
 	assert.ok(css.includes(`[data-windows-titlebar]`), "the seam would also fire on the darwin layout, which styles its own");
 
 	const style = env.document.documentElement.style;

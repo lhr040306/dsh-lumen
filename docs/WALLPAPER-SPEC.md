@@ -353,15 +353,15 @@ Windows 标题栏布局下，宿主自己那点分隔在洗色落地的一刻就
 | `--lumen-seam` | 正文色（`--dsw-alias-label-primary`）的 14%，作细线 | 同上 | 同上 |
 
 ```
-html[data-windows-titlebar][data-dsh-lumen-active] [class*="sidebarCol"]{background-color:var(--lumen-panel);box-shadow:inset -1px 0 0 var(--lumen-seam);}
-html[data-windows-titlebar][data-dsh-lumen-active] [class*="frame"]:before{background-color:var(--lumen-panel);}
+html[data-windows-titlebar][data-dsh-lumen-active] [class*="sidebarCol"]{background-image:linear-gradient(to bottom,transparent 0,var(--lumen-panel) 40px);box-shadow:inset -1px 0 0 var(--lumen-seam);}
 ```
 
 - **只有一层。** 两个列背后的 frame 是透明的，所以这 34% 只落一次，不构成 §6.2 说的那种叠加。
 - 颜色取的是侧栏与正文自己的值，不是画布色：浅色主题下侧栏变"奶白"、深色主题下变"更暗"，与 app 其它表面同一个方向。细线同理——正文色在浅色下是深的、深色下是浅的，插件不需要知道当前是哪套主题。
-- 标题栏那 40px 也跟着上色：宿主布局里它和侧栏本来就是同一个填充，不上的话左边缘会在 y=40 处出现一道台阶。
+- **面板从侧栏自己的顶边开始，用一个标题栏高度淡入，标题栏那 40px 不上色。** 第一版把标题栏也上了色（宿主布局里它和侧栏本来就是同一个填充），结果在那张偏暗的壁纸上，它变成横在内容顶部的一条亮带、并在 y=40 处以一条硬边结束——看起来像渲染故障而不是 chrome。只上侧栏那一段本该是对的，但"那一段"的宽度等于侧栏宽度，可拖拽、只有运行时才知道，CSS 表达不了；于是让侧栏从自己的第一像素起淡入，两侧都没有台阶可藏。
+- 细线从同一个顶边开始，也正是宿主原生布局里 `border-right` 的起点。
 - **macOS 有意排除。** `[data-platform=darwin]` 下宿主自己给了侧栏渐变与 `centerCol` 的 `border-left`，接缝本来就在，只有 Windows 的 chrome 缺这一条——这正是 `[data-windows-titlebar]` 标记的东西。
-- 宿主的类名带构建哈希（`BynINW_sidebarCol`），所以选择器匹配**局部名**而不是哈希，并且只在本插件正在画图时（`data-dsh-lumen-active`）生效。宿主改名后这两条规则不再命中，画面回到加它们之前——这是唯一值得要的失败模式。
+- 宿主的类名带构建哈希（`BynINW_sidebarCol`），所以选择器匹配**局部名**而不是哈希，并且只在本插件正在画图时（`data-dsh-lumen-active`）生效。宿主改名后这条规则不再命中，画面回到加它之前——这是唯一值得要的失败模式。
 - 强度是 `PANEL_SCRIM`（34%）。太淡了看不出隔离（22% 在亮壁纸上仍读作一块发白的区域），太浓了就是一块板子压住照片（46% 已经把照片压成轮廓）；34% 加一条细线是两者之间的位置。
 
 
