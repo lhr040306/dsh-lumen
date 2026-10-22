@@ -261,6 +261,11 @@ function createStyle() {
 		setProperty(name, value) {
 			store[name] = String(value);
 		},
+		removeProperty(name) {
+			const previous = store[name] === undefined ? "" : store[name];
+			delete store[name];
+			return previous;
+		},
 		getPropertyValue(name) {
 			return store[name] === undefined ? "" : store[name];
 		},

@@ -70,6 +70,14 @@ const BLEED_BLUR = 48;
 const FADE_HINT_SLACK_MS = 120;
 /** WCAG AA body-text contrast the readability floor targets. */
 const CONTRAST_TARGET = 4.5;
+/**
+ * Custom property carrying the *opaque*, un-washed canvas colour.
+ *
+ * The wash hands the shell `transparent`, which is the whole point — but a
+ * surface that exists to hide the application behind it cannot be transparent.
+ * Those surfaces read this instead; see `FULL_WINDOW_VIEW_CSS` below.
+ */
+const CANVAS_VAR = "--lumen-canvas";
 
 /**
  * A neutral film-grain tile. Generated rather than shipped: an SVG turbulence
@@ -80,6 +88,31 @@ const NOISE_SVG = "<svg xmlns='http://www.w3.org/2000/svg' width='180' height='1
 	+ "<filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/></filter>"
 	+ "<rect width='180' height='180' filter='url(#n)'/></svg>";
 const NOISE_URI = `url("data:image/svg+xml,${encodeURIComponent(NOISE_SVG)}")`;
+
+/**
+ * THE ONE SURFACE THAT MUST NOT BE SEE-THROUGH
+ *
+ * The wash hands the shell `transparent` (see the header comment), and for
+ * every ordinary surface that is the point: the wallpaper shows through and
+ * nothing collides, because what is behind them is the picture.
+ *
+ * A *full-window view* is the exception. The account "usage" page is one: a
+ * `role="dialog"` that covers the window, owns the window's drag row, and
+ * paints itself from `--dsw-alias-bg-base`. What sits behind it is not the
+ * wallpaper but the application — so a transparent background turns its own
+ * chrome into a second layer of text over the page it was meant to hide. The
+ * back button in its header lands on the sidebar's brand mark at exactly the
+ * same coordinates, and the two smear together into unreadable overlap.
+ *
+ * So those surfaces get the opaque canvas colour back. Nothing in the host
+ * announces "this is a full-window view", so the selector reads it off the
+ * structure: a body-level dialog that owns a drag row covers the window by
+ * construction, while a modal — which owns a card, not the window — does not,
+ * and keeps the wallpaper showing around it. `:has()` is available in every
+ * Chromium this ships on; an engine that cannot parse it drops this one rule,
+ * which is precisely the behaviour before it existed.
+ */
+const FULL_WINDOW_VIEW_CSS = `body>[role="dialog"][aria-modal="true"]:has(>header[data-window-drag]){background-color:var(${CANVAS_VAR},var(--dsw-alias-bg-base));}`;
 
 /** The stylesheet the engine owns. Kept small and fully namespaced. */
 /**
@@ -100,6 +133,7 @@ const ENGINE_CSS = `
 [${ACTIVE_ATTR}="veil"]{position:absolute;inset:0;background:transparent;transition:background-color 220ms ease;}
 [${ACTIVE_ATTR}="grain"]{position:absolute;inset:0;background-image:${NOISE_URI};background-repeat:repeat;mix-blend-mode:overlay;opacity:0;transition:opacity 240ms ease;}
 @media (prefers-reduced-motion: reduce){[${ACTIVE_ATTR}="slot-0"],[${ACTIVE_ATTR}="slot-1"]{transition-duration:0ms !important;}}
+${FULL_WINDOW_VIEW_CSS}
 `;
 
 /** Resolve an item into the CSS the backdrop layer needs. */
@@ -401,6 +435,11 @@ function createEngine(options) {
 	function applyWash(alpha, raw) {
 		if (raw === null || raw.base === null) return;
 		if (veil !== null) veils(alpha, raw);
+		// Published *before* the token override, and unconditionally: the full-
+		// window rule is only meaningful while those tokens are transparent, and
+		// a surface that reads the variable has to find the colour already there
+		// on the first paint rather than a frame later.
+		publishCanvas(raw.base);
 		if (typeof ctx.theme?.overrideTokens !== "function") return;
 		applyingOverride = true;
 		try {
@@ -419,6 +458,23 @@ function createEngine(options) {
 		} finally {
 			applyingOverride = false;
 		}
+	}
+
+	/**
+	 * Hand the opaque canvas colour to the stylesheet.
+	 *
+	 * One custom property on `:root`, because the consumer is a host element
+	 * this plugin does not own and cannot reach: a full-window view is a child
+	 * of `body`, so the value has to be inherited from the document rather than
+	 * written onto the element (see `FULL_WINDOW_VIEW_CSS`).
+	 */
+	function publishCanvas(base) {
+		if (doc === null || doc === undefined) return;
+		const target = doc.documentElement;
+		if (target === null || target === undefined || !target.style) return;
+		try {
+			target.style.setProperty(CANVAS_VAR, formatColor({ r: base.r, g: base.g, b: base.b, a: 1 }));
+		} catch {}
 	}
 
 	/** Paint the veil itself. */
@@ -457,6 +513,17 @@ function createEngine(options) {
 			try {
 				dispose();
 			} catch {}
+		}
+		// The opaque canvas goes with it: with no wash the shell's own tokens are
+		// opaque again, and a stale colour would repaint a full-window view in the
+		// previous theme's canvas after a light/dark switch.
+		if (doc !== null && doc !== undefined) {
+			const target = doc.documentElement;
+			if (target !== null && target !== undefined && target.style && typeof target.style.removeProperty === "function") {
+				try {
+					target.style.removeProperty(CANVAS_VAR);
+				} catch {}
+			}
 		}
 	}
 
@@ -879,4 +946,4 @@ function createEngine(options) {
 	};
 }
 
-module.exports = { createEngine, itemToBackground, readRawTheme, readPaletteFromDom, ACTIVE_ATTR, STYLE_ID, NOISE_URI, CONTRAST_TARGET, WASH_TOKENS };
+module.exports = { createEngine, itemToBackground, readRawTheme, readPaletteFromDom, ACTIVE_ATTR, STYLE_ID, NOISE_URI, CONTRAST_TARGET, WASH_TOKENS, CANVAS_VAR };

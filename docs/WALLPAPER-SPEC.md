@@ -318,6 +318,30 @@ bleed.style.backgroundPosition = "center"   // 恒定
 - `position` **必须进渲染键**（`renderKey`）。它既不改变图片内容也不改变尺寸，`needsWork` 与 `needsCrossfade` 都不会因它变真；不进键的话这次改动会被短路判为"无事可做"，位置静默不生效，直到别的什么恰好动了。
 - 未知值在 `normalizeWash` 里被修回 `center`，不是被拒绝——洗色子记录永远是一个完整可用的形状。
 
+### 6.8 通窗口视图必须不透明
+
+洗色把 `--dsw-alias-bg-base` 与 `--dsw-specific-sidebar-fill` 一起换成 `transparent`，这是壁纸可见的前提（见 §6.2 与文件头"透明表面 + 单层纱"）。普通面板透明是对的：它们背后就是壁纸。
+
+**通窗口视图**是唯一的例外。账号菜单里的「查询用量」正是这样一个视图：一个 `body` 下的 `role="dialog"`，自己占满窗口、自己拥有窗口的拖拽行，底色取 `--dsw-alias-bg-base`。它背后不是壁纸，而是**应用本身**；底色一旦透明，它自己表头的返回按钮就画在侧栏品牌字标上，两层文字在同一坐标叠成一团。
+
+所以这类表面拿回**不透明**的画布色：
+
+| 名字 | 内容 | 谁写 | 谁读 |
+| --- | --- | --- | --- |
+| `--lumen-canvas` | 未洗色的画布色，恒为不透明 | 引擎 `applyWash` 写到 `:root` | 引擎样式表里那唯一一条规则 |
+
+规则（选择器刻意不依赖宿主的哈希类名）：
+
+```
+body>[role="dialog"][aria-modal="true"]:has(>header[data-window-drag]){background-color:var(--lumen-canvas,var(--dsw-alias-bg-base))}
+```
+
+- `[role="dialog"][aria-modal="true"]` 是 DSH 的弹窗契约，`>header[data-window-drag]` 是"这个视图拥有窗口拖拽行"的结构证据，因此它必然通窗口。只有卡片的模态框没有这一行，继续保持透明，四周照常见到壁纸。
+- `:has()` 在本项目支持的 Chromium 上都有；解析不了时整条规则被丢弃，行为回到加它之前。
+- 变量写在 `:root` 而不是直接写在那类元素上：那个元素属于宿主，插件不拥有它，也不该去改它的 `style`。继承即可。
+- `clearWash` 连同这个变量一起撤。洗色撤走时宿主令牌本身已经是不透明的，留一个旧值只会让通窗口视图在换主题后还画着上一个主题的画布色。
+
+
 ---
 
 ## 七、轮播调度

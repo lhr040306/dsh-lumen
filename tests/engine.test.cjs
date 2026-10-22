@@ -13,7 +13,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { createEngine, itemToBackground, readRawTheme, readPaletteFromDom, ACTIVE_ATTR, STYLE_ID, CONTRAST_TARGET } = require("../src/engine.cjs");
+const { createEngine, itemToBackground, readRawTheme, readPaletteFromDom, ACTIVE_ATTR, STYLE_ID, CONTRAST_TARGET, CANVAS_VAR } = require("../src/engine.cjs");
 const { createStore } = require("../src/store.cjs");
 const { createDocument, createWindow, createStorage } = require("./helpers/minidom.cjs");
 const color = require("../src/color.cjs");
@@ -476,6 +476,35 @@ test("a theme change repaints from the raw theme, without a transition", () => {
 	const washed = color.parseColor(layers(env.document, "veil")[0].style.backgroundColor);
 	assert.equal(washed.r, 255, "the veil did not follow the theme to light");
 	env.engine.dispose();
+});
+
+test("a full-window view is given an opaque canvas while the wash is on", () => {
+	// The reported bug: the account "usage" page is a body-level dialog that
+	// paints itself from `--dsw-alias-bg-base`. The wash makes that token
+	// transparent, so the page showed the sidebar underneath and its back button
+	// landed on the brand mark. The fix is one rule plus one inherited colour —
+	// asserted here because neither is visible until someone opens that page.
+	const env = makeEngine();
+	env.engine.start();
+
+	const css = env.document.getElementById(STYLE_ID).textContent;
+	assert.ok(css.includes(`>header[data-window-drag])`), "the full-window rule is missing from the stylesheet");
+	assert.ok(css.includes(`var(${CANVAS_VAR}`), "the rule does not read the opaque canvas colour");
+
+	const canvas = env.document.documentElement.style.getPropertyValue(CANVAS_VAR);
+	const parsed = color.parseColor(canvas);
+	assert.ok(parsed !== null, `the canvas colour was not published (got ${JSON.stringify(canvas)})`);
+	assert.equal(parsed.a, 1, "the canvas colour handed to a full-window view is still translucent");
+	// The dark default's canvas, so a stale light value cannot pass this.
+	assert.deepEqual([parsed.r, parsed.g, parsed.b], [16, 20, 24]);
+
+	env.theme.setPreference("light-default");
+	env.ctx.emitThemeChange();
+	env.engine.render(true);
+	assert.equal(color.parseColor(env.document.documentElement.style.getPropertyValue(CANVAS_VAR)).r, 255, "the canvas colour did not follow the theme");
+
+	env.engine.dispose();
+	assert.equal(env.document.documentElement.style.getPropertyValue(CANVAS_VAR), "", "a stale canvas colour outlived the wash");
 });
 
 test("dispose leaves no element, no attribute and no token override behind", () => {
