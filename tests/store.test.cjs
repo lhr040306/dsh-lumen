@@ -147,7 +147,7 @@ test("the local seed paints before the host answers, and is adopted when the hos
 	const first = makeStore(host, storage);
 	await first.load();
 	first.update((draft) => {
-		draft.single = { ...draft.single, ref: "drift", seed: "seeded" };
+		draft.single = { ...draft.single, ref: "mist", seed: "seeded" };
 		return draft;
 	});
 	await first.flush();
@@ -157,7 +157,7 @@ test("the local seed paints before the host answers, and is adopted when the hos
 	const freshHost = createHostFile();
 	const second = makeStore(freshHost, storage);
 	const loaded = await second.load();
-	assert.equal(loaded.single.ref, "drift", "the seed was not read");
+	assert.equal(loaded.single.ref, "mist", "the seed was not read");
 	// And the seed was pushed into the empty host file so the next launch is not empty.
 	await second.flush();
 	assert.ok(freshHost.file.has("single"), "the rescued seed never reached the empty host file");
@@ -304,14 +304,14 @@ test("subscribers are notified on change and released on dispose", async () => {
 		calls += 1;
 	});
 	store.update((draft) => {
-		draft.single = { ...draft.single, ref: "drift" };
+		draft.single = { ...draft.single, ref: "mist" };
 		return draft;
 	});
 	assert.ok(calls > 0, "a change did not notify");
 	unsubscribe();
 	const before = calls;
 	store.update((draft) => {
-		draft.single = { ...draft.single, ref: "drift" };
+		draft.single = { ...draft.single, ref: "mist" };
 		return draft;
 	});
 	assert.equal(calls, before, "unsubscribe did not take effect");

@@ -460,7 +460,7 @@ test("the harness can serve a host channel, and the durable copy wins", async ()
 	const fetchDouble = async (url, init) => {
 		calls.push({ url, init });
 		const body = JSON.parse(init.body);
-		const value = body.method === "get" ? { single: JSON.stringify({ kind: "recipe", ref: "drift", seed: "from-host" }) } : {};
+		const value = body.method === "get" ? { single: JSON.stringify({ kind: "recipe", ref: "mist", seed: "from-host" }) } : {};
 		return { ok: true, status: 200, json: async () => ({ ok: true, value }) };
 	};
 	const { realm, ctx, api } = await bootWithPanel({ fetch: fetchDouble });

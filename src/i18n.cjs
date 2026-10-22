@@ -23,13 +23,24 @@ const TABLE = {
 
 	"group.current": ["当前壁纸", "Current"],
 	"group.builtin": ["内置壁纸", "Built-in"],
-	"group.builtin.hint": ["前两张按参数现场画出来，后四张是随包内置的插画", "The first two are drawn from parameters on the spot; the last four are illustrations bundled with the package"],
 	"group.custom": ["自定义", "Custom"],
 	"group.splash": ["开屏", "Splash"],
 	"group.splash.hint": ["DSH 启动时先显示这张图或这段视频，界面就绪后自动让位", "Shown while DSH starts up, then steps aside once the interface is ready"],
 	"group.rotation": ["轮播调度", "Rotation"],
 	"group.appearance": ["外观", "Appearance"],
 	"group.status": ["状态", "Status"],
+
+	"section.wallpaper": ["壁纸", "Wallpaper"],
+	"section.wallpaper.hint": ["换哪张图、隔多久换、字压在上面还清不清楚", "Which picture, how often it changes, and whether text stays readable on it"],
+	"section.wallpaper.more": ["更多设置", "More"],
+	"section.wallpaper.more.hint": ["轮播调度 · 外观", "Rotation · appearance"],
+	"section.composer": ["消息栏", "Composer"],
+	"section.composer.hint": ["输入框的蓝环和鲸鱼娘，可以关掉", "The rim and the whale girl on the input box — or switch them off"],
+	"section.composer.rim": ["输入框四边是一圈 2.5px 的蓝色细环，鼠标移上去或者点进输入框时会亮起来。", "A 2.5px blue rim rings the input box; it brightens on hover and while the box holds focus."],
+	"section.composer.mascot": ["左边挂着鲸鱼娘，点她一下收成一条尾巴，再点一下就回来了。", "The whale girl hangs on the left edge — click her once to fold her into a tail, again to bring her back."],
+	"composer.enable": ["应用到输入框", "Apply to the composer"],
+	"composer.enable.hint": ["关掉之后输入框完全恢复 DSH 原样", "Off leaves the input box exactly as DSH ships it"],
+	"composer.off": ["已关闭：输入框恢复原样，壁纸和开屏不受影响。", "Off. The input box is back to stock; the wallpaper and splash are untouched."],
 
 	"kind.recipe": ["生成式", "Generated"],
 	"kind.photo": ["内置插画", "Bundled illustration"],
@@ -52,11 +63,6 @@ const TABLE = {
 	"custom.url.hint": ["填一个以 http:// 或 https:// 开头的图片链接，点应用才会生效", "An image address starting with http:// or https:// — nothing happens until you press apply"],
 	"custom.url.placeholder": ["https://…/wallpaper.jpg", "https://…/wallpaper.jpg"],
 	"custom.apply": ["应用", "Apply"],
-	"custom.gradient": ["渐变", "Gradient"],
-	"custom.gradient.hint": ["从左边这个颜色过渡到右边那个，角度可以调", "One colour fading into the other — the angle is adjustable"],
-	"custom.from": ["起", "From"],
-	"custom.to": ["止", "To"],
-	"custom.angle": ["角度", "Angle"],
 	// What is applied, said twice: a crop of the thing itself sits above, and
 	// these lines name it. "96KB" alone answered how big and nothing else.
 	"custom.applied.image": ["已应用的本地图片 · {kb}KB", "Local image applied · {kb}KB"],
@@ -212,7 +218,6 @@ const TABLE = {
 	"error.stillTooLarge": ["压缩后仍然过大，换一张试试", "Still too large after compression — try another"],
 	"error.noCanvas": ["当前环境不支持图片处理", "Image processing is unavailable here"],
 	"error.urlInvalid": ["地址无效，只支持 http / https", "Invalid address — http / https only"],
-	"error.gradientInvalid": ["渐变参数无效", "Invalid gradient"]
 };
 
 /**

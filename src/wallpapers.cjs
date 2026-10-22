@@ -2,7 +2,7 @@
 /**
  * The built-in wallpaper library — two families behind one id.
  *
- * FAMILY ONE, AND WHY IT EXISTS AT ALL: `drift` and `mist` are recipes, not
+ * FAMILY ONE, AND WHY IT EXISTS AT ALL: `mist` is a recipe, not
  * pictures. A recipe is a pure function `(seed, hue, softness, grain) -> CSS`:
  * same inputs, same picture, forever — which is what lets the tests pin the
  * output, lets the "shake" button produce a genuine variation, and lets the
@@ -139,38 +139,6 @@ function photoRecipe(spec) {
 
 const RECIPES = [
 	{
-		id: "drift",
-		name: { zh: "弥散", en: "Drift" },
-		scheme: "dark",
-		tags: ["calm", "glow"],
-		defaultSoftness: 0.62,
-		defaultGrain: 0.22,
-		complexity: 0.3,
-		build(p, rng) {
-			const h = 246 + p.hue;
-			const soft = self(0.62, p.softness);
-			const angle = rng.range(150, 230);
-			const layers = [];
-			const count = 4;
-			for (let i = 0; i < count; i += 1) {
-				const accent = i === count - 1 ? h + 96 : h + rng.range(-26, 26);
-				layers.push(
-					radial({
-						x: rng.range(6, 94),
-						y: rng.range(4, 84),
-						rx: rng.range(34, 58) * (0.7 + soft * 0.7),
-						ry: rng.range(30, 54) * (0.7 + soft * 0.7),
-						color: tone(rng.range(0.44, 0.62), rng.range(0.09, 0.16), accent),
-						alpha: rng.range(0.5, 0.82),
-						fade: rng.range(78, 100)
-					})
-				);
-			}
-			layers.push(vignette(0.34 + soft * 0.16, 34));
-			return { layers, base: tone(0.15, 0.028, h + 8) };
-		}
-	},
-	{
 		id: "mist",
 		name: { zh: "晨雾", en: "Mist" },
 		scheme: "light",
@@ -261,7 +229,7 @@ function self(base, slider) {
 const RECIPE_IDS = RECIPES.map((r) => r.id);
 const RECIPE_BY_ID = new Map(RECIPES.map((r) => [r.id, r]));
 
-/** The recipe with this id, or `drift` when the id is unknown/absent. */
+/** The recipe with this id, or the generated one when the id is unknown. */
 function getRecipe(id) {
 	return RECIPE_BY_ID.get(id) || RECIPES[0];
 }
@@ -288,7 +256,8 @@ function isPhotoId(id) {
  * becomes the night-sky illustration), not by array position.
  */
 const RETIRED_RECIPE_IDS = new Map([
-	["aurora", "drift"],
+	["aurora", "mist"],
+	["drift", "mist"],
 	["starfield", "whale-starlit"],
 	["dune", "mist"]
 ]);

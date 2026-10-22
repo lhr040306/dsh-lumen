@@ -4,7 +4,7 @@
 
 其中的数字都不是从注释里抄的，而是从 `src/` 里的导出常量与测试用的边界值读出来的。改动源码后请一并更新本文（`tests/state.test.cjs` 会断言持久化字段列表与状态自身字段列表完全一致，那是最容易漂移的一处）。
 
-**版本**：`schema 1` · 插件 `1.2.1`
+**版本**：`schema 1` · 插件 `1.3.0`
 
 ---
 
@@ -12,7 +12,7 @@
 
 | 术语 | 含义 |
 | --- | --- |
-| **配方（recipe）** | 一套参数化的程序化壁纸生成规则，如 `drift` |
+| **配方（recipe）** | 一套参数化的程序化壁纸生成规则，如 `mist` |
 | **壁纸条目（item）** | 播放列表或当前壁纸的一项，可能是一个配方、一张本地图、一个地址或一条渐变 |
 | **种子（seed）** | 配方的变化选择器。`"default"` 表示该配方的规范渲染 |
 | **微调（tuning）** | 三个全局旋钮：色相、柔度、颗粒 |
@@ -42,7 +42,7 @@ interface WallpaperItem {
 
 | `kind` | `ref` 是什么 | 约束 |
 | --- | --- | --- |
-| `recipe` | 配方 id，如 `drift`。未知 id 回退到 `drift` | 必须是 `RECIPE_IDS` 之一 |
+| `recipe` | 配方 id，如 `mist`。未知 id 回退到 `mist` | 必须是 `RECIPE_IDS` 之一 |
 | `image` | `data:image/...;base64,...` | ≤ **8388608** 字符（8 MiB）；必须是安全的 data image |
 | `url` | `http` / `https` 地址 | 仅这两个协议 |
 | `gradient` | 一条 CSS 线性渐变 | ≤ **600** 字符；通过 `isSafeGradient` 检查 |
@@ -78,7 +78,6 @@ interface WallpaperItem {
 
 | id | 中文 | English | 类型 | scheme | softness 默认 | grain 默认 | complexity | tags |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `drift` | 弥散 | Drift | 生成式 | dark | 0.62 | 0.22 | 0.30 | calm, glow |
 | `mist` | 晨雾 | Mist | 生成式 | light | 0.78 | 0.16 | 0.20 | cool, calm |
 | `whale-point-half` | 夜潮 | Night Tide | 插画 | dark | 0.50 | 0.20 | 0.55 | photo, whale |
 | `whale-starlit` | 星海 | Starlit | 插画 | dark | 0.50 | 0.20 | 0.50 | photo, whale |
@@ -88,10 +87,9 @@ interface WallpaperItem {
 **`complexity`（0–1）** 不是给用户看的标签，是**自动弱化的输入**：它估计画面有多"花"，越高则洗色抬升越多。取值和实际观感对应：
 
 - `mist` 0.20 —— 大片柔和薄雾，几乎不需要保护
-- `drift` 0.30 —— 四团弥散光斑加暗角
 - `whale-sunset` 0.60 —— 最花，也是最亮的一张（画面里有一整片晚霞）
 
-**`softness` / `grain` 默认值** 是每个配方单独标定的（`defaultSoftnessFor` / `defaultGrainFor`），不是全局常数。例如 `drift` 的 softness 默认 0.62（光斑要足够散），而 `mist` 的 grain 只有 0.16（浅色薄雾加颗粒会显脏）。
+**`softness` / `grain` 默认值** 是每个配方单独标定的（`defaultSoftnessFor` / `defaultGrainFor`），不是全局常数。例如 `mist` 的 grain 只有 0.16（浅色薄雾加颗粒会显脏）。
 
 ### 3.1 为什么插画也是"配方"
 
@@ -136,7 +134,8 @@ build() { return { layers: ['url("/lumen/wallpaper/whale-sunset.webp")'], base: 
 
 | 退役 id | 改写为 | 理由 |
 | --- | --- | --- |
-| `aurora` | `drift` | 都是深色弥散光 |
+| `aurora` | `mist` | 深色弥散光已退役，落到仍然保留的生成式配方 |
+| `drift` | `mist` | 弥散本身已退役，落到唯一保留的生成式配方 |
 | `starfield` | `whale-starlit` | 都表达"星空下的夜" |
 | `dune` | `mist` | 都是浅色、安静的一面 |
 
@@ -166,7 +165,7 @@ renderRecipe({ recipeId, seed, tuning })
 | `luminance` | 实测亮度；生成式为 `null`（由引擎估计），插画为文件上的测量值 |
 | `photo` | 是否随包插画。为 `true` 时引擎把颗粒降到一半 |
 
-未知的 `recipeId` 回退到 `drift`。**这个函数不抛异常**——任何输入都返回可渲染的值。
+未知的 `recipeId` 回退到 `mist`。**这个函数不抛异常**——任何输入都返回可渲染的值。
 
 ### 4.2 生成的词汇表
 
@@ -454,7 +453,7 @@ interface Schedule {
 | 字段 | 类型 | 默认 | 含义 |
 | --- | --- | --- | --- |
 | `mode` | `single` \| `rotation` | `single` | 单张 / 轮播 |
-| `single` | `WallpaperItem` | `drift` | `single` 模式显示的那一张 |
+| `single` | `WallpaperItem` | `whale-sunset` | `single` 模式显示的那一张 |
 | `playlist` | `WallpaperItem[]` | `[]` | 轮播序列，≤ 24 |
 | `cursor` | number | `0` | 播放列表游标 |
 | `remaining` | number[] | `[]` | 洗牌模式下剩余的队列 |
@@ -626,7 +625,7 @@ interface Schedule {
 
 | 字段 | 含义 |
 | --- | --- |
-| `plugin` / `build` / `schema` | `"dsh-lumen"` / `"1.2.1"` / `1` |
+| `plugin` / `build` / `schema` | `"dsh-lumen"` / `"1.3.0"` / `1` |
 | `status` | `booting` · `ready` · `degraded` · `disposed` |
 | `warnings` | `[dsh-lumen]` 前缀的告警行数组 |
 | `health` | `{ hostAvailable, hostReason, lastError, hasStorage }` |
@@ -689,7 +688,7 @@ interface Schedule {
 
 也就是说，一个由旧版本写下的文档被新版本读到，渲染结果与旧版本**逐像素相同**；反向（新文档被旧版本读）也只是丢掉这两个增量字段，`position` 退回居中、`luminance` 退回常数。同一条性质还让降级变得安全：卸载到旧版本不会让洗色或调度出问题。
 
-**为什么删掉三套配方也没抬 `schema`。** `ref` 的含义没有变——它仍然是一个配方 id，缺省行为仍然是"不认识的 id 落到 `RECIPES[0]`"。`repairRecipeId` 只是把这个缺省做得更贴近原意（见 3.3）。旧版读新版文档时，`whale-*` 是它不认识的 id，于是显示 `drift`：不是崩溃，也不是空画布，而是一张仍然能看的壁纸。
+**为什么删掉三套配方也没抬 `schema`。** `ref` 的含义没有变——它仍然是一个配方 id，缺省行为仍然是"不认识的 id 落到 `RECIPES[0]`"。`repairRecipeId` 只是把这个缺省做得更贴近原意（见 3.3）。旧版读新版文档时，`whale-*` 是它不认识的 id，于是显示**当时的默认配方**：不是崩溃，也不是空画布，而是一张仍然能看的壁纸。
 
 ---
 

@@ -98,6 +98,71 @@ function group(title, hint) {
 }
 
 /**
+ * A top-level section: one heading that owns everything below it.
+ *
+ * The panel is long enough that a flat run of group headings reads as one list
+ * of unrelated settings — the three things this plugin actually changes (the
+ * wallpaper, the splash, the composer) got lost in it. A section is that unit:
+ * a heading, a one-line statement of what the section is for, then its groups.
+ *
+ * @param {string} title section heading
+ * @param {string|null} hint one line under the heading, or null
+ * @param {Array} children nodes to place under the head; nulls are dropped
+ */
+function section(title, hint, children, options) {
+	const opt = options || {};
+	const body = [];
+	for (const child of children || []) {
+		if (child !== null && child !== undefined) body.push(child);
+	}
+	// A node is accepted as the hint so a section can keep it live: the wallpaper
+	// section says what is applied right now, which changes without rebuilding
+	// the panel.
+	const hintNode =
+		hint && typeof hint === "object" ? hint : hint ? h("span", { class: "lumen-section-hint", text: hint }) : null;
+	const head = h(opt.collapsible ? "summary" : "div", { class: "lumen-section-head" }, [
+		h("h3", { class: "lumen-section-title", text: title }),
+		hintNode,
+		opt.collapsible ? h("span", { class: "lumen-section-caret", attrs: { "aria-hidden": "true" } }) : null
+	]);
+	const shell = h(opt.collapsible ? "details" : "section", { class: `lumen-section${opt.collapsible ? " is-collapsible" : ""}` }, [
+		head,
+		h("div", { class: "lumen-section-body" }, body)
+	]);
+	// `<details>` carries its own open state, and a collapsed panel is a saved
+	// preference as much as a visual one — so it is set after construction, where
+	// the attribute means the same thing to every engine.
+	if (opt.collapsible && opt.open === true) shell.setAttribute("open", "");
+	return shell;
+}
+
+/**
+ * A fold inside a section, for the settings a person changes once.
+ *
+ * Same `<details>` mechanics as a collapsible section, deliberately a different
+ * shape: no section-sized heading, one hairline above it, and a summary that
+ * reads as "there is more under here" rather than "this is another category".
+ *
+ * @param {string} title summary label
+ * @param {string|null} hint one line beside the label
+ * @param {Array} children contents, revealed when opened
+ */
+function disclosure(title, hint, children) {
+	const body = [];
+	for (const child of children || []) {
+		if (child !== null && child !== undefined) body.push(child);
+	}
+	return h("details", { class: "lumen-disclosure" }, [
+		h("summary", { class: "lumen-disclosure-head" }, [
+			h("span", { class: "lumen-disclosure-title", text: title }),
+			hint ? h("span", { class: "lumen-disclosure-hint", text: hint }) : null,
+			h("span", { class: "lumen-section-caret", attrs: { "aria-hidden": "true" } })
+		]),
+		h("div", { class: "lumen-disclosure-body" }, body)
+	]);
+}
+
+/**
  * A range slider with a live value readout.
  * `onInput` fires on every pixel during a drag — the callers are all cheap
  * enough for that, and a slider that only reacts on release feels broken.
@@ -353,6 +418,8 @@ module.exports = {
 	replace,
 	row,
 	group,
+	section,
+	disclosure,
 	slider,
 	segmented,
 	chipStrip,

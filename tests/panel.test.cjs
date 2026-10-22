@@ -332,7 +332,7 @@ test("an illustration hides the shake control and claims no seed", () => {
 	// and the hero stops advertising a seed it does not use.
 	const { panel, store, t } = makePanel({ setup: (s) => {
 		s.update((draft) => {
-			draft.single = { ...draft.single, kind: "recipe", ref: "drift", seed: "s7" };
+			draft.single = { ...draft.single, kind: "recipe", ref: "mist", seed: "s7" };
 			return draft;
 		});
 	} });
@@ -356,7 +356,7 @@ test("an illustration hides the shake control and claims no seed", () => {
 test("enabling rotation switches the mode and asks the engine to reschedule", () => {
 	const { panel, store, engine } = makePanel();
 	store.update((draft) => {
-		draft.playlist = [{ id: "r1", kind: "recipe", ref: "drift", seed: "s1" }];
+		draft.playlist = [{ id: "r1", kind: "recipe", ref: "mist", seed: "s1" }];
 		return draft;
 	});
 	panel.sync();
@@ -373,7 +373,7 @@ test("enabling rotation switches the mode and asks the engine to reschedule", ()
 	assert.ok(engine.calls.reschedule > before, "the schedule was not re-armed");
 	// Enabling rotation adopts the entry the user is looking at, so the picture
 	// does not jump on the first tick.
-	assert.equal(store.getState().single.ref, "drift");
+	assert.equal(store.getState().single.ref, "mist");
 	panel.destroy();
 });
 
@@ -458,7 +458,7 @@ test("the playlist renders one row per entry and an empty state when there is no
 
 	store.update((draft) => {
 		draft.playlist = [
-			{ id: "a1", kind: "recipe", ref: "drift", seed: "s1" },
+			{ id: "a1", kind: "recipe", ref: "mist", seed: "s1" },
 			{ id: "b2", kind: "gradient", ref: "linear-gradient(90deg, #000 0%, #fff 100%)", seed: "default" }
 		];
 		draft.mode = "rotation";
@@ -476,7 +476,7 @@ test("removing a playlist entry is applied to the store", () => {
 	const { panel, store } = makePanel();
 	store.update((draft) => {
 		draft.playlist = [
-			{ id: "a1", kind: "recipe", ref: "drift", seed: "s1" },
+			{ id: "a1", kind: "recipe", ref: "mist", seed: "s1" },
 			{ id: "b2", kind: "recipe", ref: "mist", seed: "s2" }
 		];
 		draft.mode = "rotation";
@@ -499,9 +499,9 @@ test("reordering a playlist entry moves it and keeps the cursor sensible", () =>
 	const { panel, store } = makePanel();
 	store.update((draft) => {
 		draft.playlist = [
-			{ id: "a1", kind: "recipe", ref: "drift", seed: "s1" },
+			{ id: "a1", kind: "recipe", ref: "mist", seed: "s1" },
 			{ id: "b2", kind: "recipe", ref: "mist", seed: "s2" },
-			{ id: "c3", kind: "recipe", ref: "drift", seed: "s3" }
+			{ id: "c3", kind: "recipe", ref: "mist", seed: "s3" }
 		];
 		draft.mode = "rotation";
 		draft.cursor = 1;
@@ -525,7 +525,7 @@ test("the pause control only appears useful when there is a rotation", () => {
 	assert.equal(pause().disabled, true, "pausing a fixed wallpaper is meaningless and should be disabled");
 
 	store.update((draft) => {
-		draft.playlist = [{ id: "r1", kind: "recipe", ref: "drift", seed: "s1" }];
+		draft.playlist = [{ id: "r1", kind: "recipe", ref: "mist", seed: "s1" }];
 		draft.mode = "rotation";
 		return draft;
 	});
@@ -542,7 +542,7 @@ test("the pause control only appears useful when there is a rotation", () => {
 test("a schedule change re-arms the timer and is persisted", () => {
 	const { panel, store, engine } = makePanel();
 	store.update((draft) => {
-		draft.playlist = [{ id: "r1", kind: "recipe", ref: "drift", seed: "s1" }];
+		draft.playlist = [{ id: "r1", kind: "recipe", ref: "mist", seed: "s1" }];
 		draft.mode = "rotation";
 		return draft;
 	});
@@ -606,7 +606,7 @@ test("out-of-range schedule input is normalised before it reaches the store", ()
 test("the panel follows the store rather than owning a copy", () => {
 	const { panel, store } = makePanel();
 	store.update((draft) => {
-		draft.single = { ...draft.single, kind: "recipe", ref: "drift", seed: "s9" };
+		draft.single = { ...draft.single, kind: "recipe", ref: "mist", seed: "s9" };
 		return draft;
 	});
 	// No explicit sync: the panel subscribes.
@@ -652,9 +652,9 @@ test("the diagnostics block reports a degraded persistence channel", async () =>
 });
 
 test("itemLabel names each kind of entry in both languages", () => {
-	assert.equal(itemLabel({ kind: "recipe", ref: "drift", seed: "default" }, "zh"), "弥散");
-	assert.equal(itemLabel({ kind: "recipe", ref: "drift", seed: "default" }, "en"), "Drift");
-	assert.equal(itemLabel({ kind: "recipe", ref: "drift", seed: "s3" }, "en"), "Drift · s3");
+	assert.equal(itemLabel({ kind: "recipe", ref: "mist", seed: "default" }, "zh"), "晨雾");
+	assert.equal(itemLabel({ kind: "recipe", ref: "mist", seed: "default" }, "en"), "Mist");
+	assert.equal(itemLabel({ kind: "recipe", ref: "mist", seed: "s3" }, "en"), "Mist · s3");
 	// An illustration has no variations, so it never grows a seed suffix — the
 	// hidden "shake" button and the label have to agree about that.
 	assert.equal(itemLabel({ kind: "recipe", ref: "whale-sunset", seed: "s3" }, "en"), "Dusk");

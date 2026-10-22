@@ -76,7 +76,7 @@ test("rotation mode reverts to single when there is nothing to rotate", () => {
 });
 
 test("the playlist is capped", () => {
-	const many = Array.from({ length: 60 }, () => ({ kind: "recipe", ref: "drift" }));
+	const many = Array.from({ length: 60 }, () => ({ kind: "recipe", ref: "mist" }));
 	const out = state.normalizeState({ playlist: many });
 	assert.equal(out.playlist.length, state.MAX_PLAYLIST);
 });
@@ -87,12 +87,12 @@ test("currentItem follows the mode", () => {
 	const rotating = state.normalizeState({
 		mode: "rotation",
 		cursor: 1,
-		playlist: [{ kind: "recipe", ref: "drift" }, { kind: "recipe", ref: "mist" }]
+		playlist: [{ kind: "recipe", ref: "mist" }, { kind: "recipe", ref: "mist" }]
 	});
 	assert.equal(state.currentItem(rotating).ref, "mist");
 	// A rotation that lost its playlist mid-flight still shows something.
-	const orphaned = state.normalizeState({ mode: "rotation", playlist: [], single: { kind: "recipe", ref: "drift" } });
-	assert.equal(state.currentItem(orphaned).ref, "drift");
+	const orphaned = state.normalizeState({ mode: "rotation", playlist: [], single: { kind: "recipe", ref: "mist" } });
+	assert.equal(state.currentItem(orphaned).ref, "mist");
 });
 
 test("a wallpaper whose recipe no longer exists is repaired, not dropped", () => {
@@ -170,7 +170,7 @@ test("composed background values are validated by shape", () => {
 });
 
 test("describeItem produces a short readable label", () => {
-	assert.equal(state.describeItem({ kind: "recipe", ref: "drift", seed: "default" }), "drift");
+	assert.equal(state.describeItem({ kind: "recipe", ref: "mist", seed: "default" }), "mist");
 	assert.equal(state.describeItem({ kind: "url", ref: "https://cdn.example.com/a.jpg", seed: "default" }), "cdn.example.com");
 	assert.ok(state.describeItem({ kind: "image", ref: TINY_PNG, seed: "default" }).indexOf("image") === 0);
 	assert.equal(state.describeItem({ kind: "gradient", ref: "linear-gradient(#000 0%, #fff 100%)", seed: "default" }), "gradient");
@@ -180,7 +180,7 @@ test("describeItem produces a short readable label", () => {
 test("every preference gets its own key, and image payloads get theirs", () => {
 	const withImage = state.normalizeState({
 		playlist: [
-			{ id: "a1", kind: "recipe", ref: "drift", seed: "default" },
+			{ id: "a1", kind: "recipe", ref: "mist", seed: "default" },
 			{ id: "b2", kind: "image", ref: TINY_PNG, seed: "default" }
 		]
 	});
@@ -231,7 +231,7 @@ test("a store round-trip preserves the playlist and rehydrates payloads", () => 
 test("a missing payload drops that entry instead of producing a broken one", () => {
 	const map = state.toStore(state.normalizeState({
 		playlist: [
-			{ id: "a1", kind: "recipe", ref: "drift", seed: "default" },
+			{ id: "a1", kind: "recipe", ref: "mist", seed: "default" },
 			{ id: "b2", kind: "image", ref: TINY_PNG, seed: "default" }
 		]
 	}));
@@ -335,13 +335,13 @@ test("a user-supplied seed is truncated, not trusted", () => {
 });
 
 test("createItem refuses what normalizeItem refuses", () => {
-	const item = state.createItem("recipe", "drift");
+	const item = state.createItem("recipe", "mist");
 	assert.equal(item.kind, "recipe");
-	assert.equal(item.ref, "drift");
+	assert.equal(item.ref, "mist");
 	assert.notEqual(item.id, undefined);
 	// Two items never share an id, even when minted in the same millisecond.
 	assert.notEqual(state.createItem("recipe", "mist").id, item.id);
-	assert.equal(state.createItem("bogus", "drift"), null);
+	assert.equal(state.createItem("bogus", "mist"), null);
 	assert.equal(state.createItem("url", "javascript:alert(1)"), null);
 	assert.equal(state.createItem("gradient", "solid"), null);
 	const image = state.createItem("image", TINY_PNG);
@@ -408,7 +408,7 @@ test("an item carries its luminance through the whole store round-trip", () => {
 		single: { id: "s0", kind: "image", ref: TINY_PNG, seed: "default", luminance: 0.84 },
 		playlist: [
 			{ id: "a1", kind: "image", ref: TINY_PNG, seed: "s1", luminance: 0.03 },
-			{ id: "b2", kind: "recipe", ref: "drift", seed: "default" }
+			{ id: "b2", kind: "recipe", ref: "mist", seed: "default" }
 		]
 	});
 	assert.equal(original.single.luminance, 0.84, "normalizeItem dropped the measurement");

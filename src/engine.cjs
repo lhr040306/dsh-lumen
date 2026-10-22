@@ -60,6 +60,32 @@ const { normalizeSchedule, planResume, stepCursor, upcomingTriggers } = require(
 const ACTIVE_ATTR = "data-dsh-lumen";
 /** Attribute set on `<html>` once a picture is on screen (see `render`). */
 const ACTIVE_MARK = "data-dsh-lumen-active";
+/**
+ * Attribute on `<html>` holding the mascot's fold state.
+ *
+ * On the root rather than on the card: the card belongs to React and re-renders,
+ * and anything written onto it can be reconciled away. The root already carries
+ * this plugin's other marker, and the stylesheet's mascot rules key off a
+ * descendant selector from it, so one attribute flips the whole thing.
+ */
+const MASCOT_STATE_ATTR = "data-dsh-lumen-mascot";
+/**
+ * Attribute on `<html>` saying the composer decoration is switched off.
+ *
+ * The stylesheet is one static string, so "off" cannot be a JavaScript branch —
+ * it is a marker on the root that the composer rules opt out of. `content:none`
+ * on both pseudo-elements is what makes it a real opt-out: the ring and the
+ * mascot are not merely hidden, they are never generated, so neither can take a
+ * click.
+ */
+const COMPOSER_STATE_ATTR = "data-dsh-lumen-composer";
+/** The mascot's box, in CSS pixels. Mirrors the `:after` rule below. */
+const MASCOT_W = 76;
+const MASCOT_H = 120;
+/** How far the sprite's right edge sits inside the card's left border. */
+const MASCOT_INSET = 6;
+/** How far the sprite's bottom sits above the card's bottom border. */
+const MASCOT_BOTTOM_INSET = 2;
 /** Class on the injected stylesheet node. */
 const STYLE_ID = "dsh-lumen-style";
 /** Longest gap between wake-up checks, ms. Bounds the damage of a missed timer. */
@@ -197,6 +223,185 @@ html[data-windows-titlebar][${ACTIVE_MARK}] [class*="sidebarCol"]{background-ima
 html[data-windows-titlebar][${ACTIVE_MARK}] [class*="frame"]:before{box-shadow:inset 0 -1px 0 var(${SEAM_VAR});}
 `;
 
+/**
+ * THE COMPOSER GETS TWO MARKS, AND NOTHING ELSE
+ *
+ * The card keeps its own fill, radius and elevation — the host's layout is not
+ * re-skinned. Two things are added on top of it: a 2.5px blue rim that fades in
+ * and out around the edge, and the whale girl leaning over the right end.
+ *
+ * WHY A RIM AND NOT A BORDER, AND WHY IT FADES
+ *
+ * A `border` would push the input's text in by its width, and `outline` cannot
+ * take a gradient. The mask trick paints the frame in the card's own padding
+ * box: two layers, one clipped to the content box and one to the border box,
+ * excluded from each other, so only the ring survives — and because it follows
+ * `border-radius:inherit`, it hugs the card's 28px corners instead of cutting
+ * across them. It is wrapped in `@supports` because an engine that cannot
+ * composite masks would paint the gradient across the whole card, which is far
+ * worse than no frame at all.
+ *
+ * The gradient runs corner to corner and is deliberately uneven: strong at the
+ * top-left, weakest around the middle of the long edges, strong again at the
+ * bottom-right. A ring of one flat alpha reads as a drawn border; two bright
+ * ends with the light falling off between them reads as a highlight catching an
+ * edge — which is why every polished composer on the web does it this way rather
+ * than with a uniform stroke.
+ *
+ * The two numbers that matter are the width and the bottom of the fade. At a
+ * hairline (1.5px) the middle can drop to 16% and still read as a continuous
+ * edge, because the eye fills in a line that thin. At 2.5px it cannot: the same
+ * falloff leaves a visible gap on the long sides, so the mid stops are lifted to
+ * 26% and 34% and the band stays unbroken while still being uneven. Thicken
+ * this further and the floor has to come up with it.
+ *
+ * At rest the whole ring sits at 75% opacity, so it suggests the card's edge
+ * without drawing attention; hover and focus take it to full. That is the whole
+ * interaction budget for the frame — it is not the thing the user is operating.
+ *
+ * WHY THE FOCUS GLOW REPLACES THE CARD'S SHADOW
+ *
+ * `box-shadow` cannot be appended to, only overwritten, and the host's own set
+ * is a token lookup this stylesheet has no business re-deriving. So on focus the
+ * card gets a purpose-built one: a 3px soft blue ring (the accent at 12%, the
+ * same idea as the host's focus ring, one step quieter) plus a slightly deeper
+ * drop shadow, so the card lifts as it lights up.
+ *
+ * WHERE THE WHALE GIRL HANGS, AND WHY THERE
+ *
+ * She hangs on the right edge of the card, body outside, hands hooked over the
+ * border. The top edge was the first attempt and it was wrong for a reason worth
+ * recording: the strip directly above the composer is where the last lines of
+ * the conversation scroll past, so a mascot there sits on top of the text the
+ * user is reading. The right edge is beside the card, not above the content.
+ *
+ * WHAT IT COSTS ON A NARROW WINDOW
+ *
+ * The composer lives inside the host's scrolling column (`overflow-y:auto`,
+ * which computes `overflow-x` to `auto` as well), so anything painted outside
+ * that column's right edge is clipped. How much room there is beside the card
+ * depends on the window: the card is capped at 952px and centred, so a wide
+ * window leaves a couple of hundred pixels and a narrow one leaves roughly the
+ * 16px side clearance. On a window that narrow the tail end of the sprite is
+ * cut by the column edge — there is no CSS that both hangs her outside the card
+ * and guarantees room outside it, because the room is not something the
+ * stylesheet can measure. A smaller sprite is the answer if it bites, not a
+ * different anchor.
+ *
+ * WHY `right:-64px` AND NOT `right:0`
+ *
+ * The sprite is drawn with a thin dark vertical line down its left edge, and her
+ * fingers wrap that line. The line is the card's right border: the box is 68px
+ * wide and shifted out by 64, so its left edge — and therefore the drawn line —
+ * lands 4px inside the real border, with her fingertips in front of the card and
+ * her body outside it. Aligning to the border rather than to the sprite's own
+ * bounding box is what makes the grip read as a grip.
+ *
+ * THE NUMBERS COME FROM THE FILE, NOT FROM TASTE. The sprite is cut so the drawn
+ * edge sits 6/320 of its height in from the left; at a 128px display height that
+ * is 2.4px, and 4px of overlap is that plus the two pixels of fingertip the crop
+ * kept. Change the display height and both numbers move with it.
+ *
+ * WHY SHE LEANS OUT ON FOCUS RATHER THAN HOVER
+ *
+ * Hover on a text field fires when the pointer merely crosses the page; focus
+ * fires when the user has actually chosen to write. Sliding 4px further out on
+ * focus reads as her peeking round to watch, and it happens once per composing
+ * session, at the moment the card is the thing being looked at. The easing
+ * overshoots slightly — a mascot that arrives mechanically reads as a CSS
+ * transition, one that settles reads as alive.
+ *
+ * THE SPRITE SHIPS IN `media/wallpapers/` AND RIDES THE ILLUSTRATION ROUTE.
+ * That route exists so package art can reach the page same-origin without
+ * inflating the browser bundle, and it serves whatever this directory contains
+ * — the directory is the allowlist. The mascot is not a wallpaper (it is not in
+ * the library, so it never appears in the panel or the playlist); it lives here
+ * because this is the only place a bundled image can be picked up from.
+ */
+const COMPOSER_MASCOT_CSS = `
+@supports ((mask-composite:exclude) or (-webkit-mask-composite:xor)){
+html[${ACTIVE_MARK}] [data-composer-card]:before{
+	content:"";
+	position:absolute;
+	inset:0;
+	box-sizing:border-box;
+	border-radius:inherit;
+	padding:2.5px;
+	background:linear-gradient(150deg,color-mix(in srgb,var(--dsw-alias-state-business-primary,#4d6bfe) 70%,transparent) 0,color-mix(in srgb,var(--dsw-alias-state-business-primary,#4d6bfe) 26%,transparent) 34%,color-mix(in srgb,var(--dsw-alias-state-business-primary,#4d6bfe) 34%,transparent) 66%,color-mix(in srgb,var(--dsw-alias-state-business-primary,#4d6bfe) 66%,transparent) 100%);
+	-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+	-webkit-mask-composite:xor;
+	mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+	mask-composite:exclude;
+	pointer-events:none;
+	opacity:.75;
+	transition:opacity 200ms ease;
+}
+}
+html[${ACTIVE_MARK}] [data-composer-card]:hover:before{opacity:1;}
+html[${ACTIVE_MARK}] [data-composer-card]:focus-within:before{opacity:1;}
+html[${ACTIVE_MARK}] [data-composer-card]:focus-within{
+	box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-state-business-primary,#4d6bfe) 12%,transparent),0 10px 26px -14px rgba(0,0,0,.28);
+}
+html[${ACTIVE_MARK}] [data-composer-card]:after{
+	content:"";
+	position:absolute;
+	inset:auto;
+	left:-70px;
+	bottom:2px;
+	width:76px;
+	height:120px;
+	background:url("/lumen/wallpaper/mascot-peek.webp") right bottom/62px auto no-repeat;
+	border:0;
+	pointer-events:auto;
+	cursor:pointer;
+	filter:drop-shadow(0 4px 8px rgba(0,0,0,.20));
+	transition:transform 260ms cubic-bezier(.34,1.32,.64,1);
+}
+html[${ACTIVE_MARK}] [data-composer-card]:focus-within:after{transform:translateX(-4px);}
+html[${ACTIVE_MARK}][${MASCOT_STATE_ATTR}="hidden"] [data-composer-card]:after,
+html[${ACTIVE_MARK}][${MASCOT_STATE_ATTR}="hidden"] [data-composer-card]:focus-within:after{
+	background-image:url("/lumen/wallpaper/mascot-tail.webp");
+	background-size:76px auto;
+	transform:none;
+	filter:drop-shadow(0 3px 6px rgba(0,0,0,.18));
+}
+html[${ACTIVE_MARK}][${COMPOSER_STATE_ATTR}="off"] [data-composer-card]:before,
+html[${ACTIVE_MARK}][${COMPOSER_STATE_ATTR}="off"] [data-composer-card]:after{content:none;}
+html[${ACTIVE_MARK}][${COMPOSER_STATE_ATTR}="off"] [data-composer-card]:focus-within{
+	box-shadow:var(--dsw-elevation-soft,0 4px 16px rgba(0,0,0,.06));
+}
+@media (prefers-reduced-motion:reduce){
+html[${ACTIVE_MARK}] [data-composer-card]:before{transition:none;}
+html[${ACTIVE_MARK}] [data-composer-card]:after{transition:none;}
+html[${ACTIVE_MARK}] [data-composer-card]:focus-within:after{transform:none;}
+}
+`;
+
+/**
+ * Whether a click at `(x, y)` landed on the mascot rather than on the card.
+ *
+ * The mascot is a pseudo-element, so it cannot carry its own listener — but a
+ * pseudo with `pointer-events:auto` reports clicks as clicks on the card that
+ * owns it. Geometry is what separates the two: the sprite's box is the strip to
+ * the left of the card's left border, `MASCOT_INSET` of it hanging inside, its
+ * bottom sitting `MASCOT_BOTTOM_INSET` above the card's bottom edge. Everything
+ * else in the card belongs to the composer.
+ *
+ * Pure on purpose: the box is the whole of the behaviour, and it is the part
+ * worth testing without a browser.
+ *
+ * @param {object} rect `getBoundingClientRect()` of the composer card
+ * @param {number} x viewport x of the click
+ * @param {number} y viewport y of the click
+ * @returns {boolean}
+ */
+function mascotHitTest(rect, x, y) {
+	if (!rect || typeof rect.left !== "number" || typeof rect.bottom !== "number") return false;
+	const right = rect.left + MASCOT_INSET;
+	const bottom = rect.bottom - MASCOT_BOTTOM_INSET;
+	return x <= right && x >= right - MASCOT_W && y <= bottom && y >= bottom - MASCOT_H;
+}
+
 /** The stylesheet the engine owns. Kept small and fully namespaced. */
 /**
  * `will-change: opacity` is deliberately NOT in here.
@@ -218,6 +423,7 @@ const ENGINE_CSS = `
 @media (prefers-reduced-motion: reduce){[${ACTIVE_ATTR}="slot-0"],[${ACTIVE_ATTR}="slot-1"]{transition-duration:0ms !important;}}
 ${FULL_WINDOW_VIEW_CSS}
 ${CHROME_SEAM_CSS}
+${COMPOSER_MASCOT_CSS}
 `;
 
 /** Resolve an item into the CSS the backdrop layer needs. */
@@ -709,10 +915,29 @@ function createEngine(options) {
 	 * @param {object} state
 	 * @param {boolean} [instant] skip the transition (boot, theme change, teardown-ish)
 	 */
+	/**
+	 * Mirror the composer switch onto the root.
+	 *
+	 * Deliberately *not* inside the paint path: `render` short-circuits when the
+	 * wallpaper and every wash field are unchanged, which is exactly the case when
+	 * somebody toggles this switch — the picture did not move, only the composer.
+	 * Called at the top of `render` so it happens on every pass regardless.
+	 */
+	function publishComposer(state) {
+		if (doc === null || doc.documentElement === undefined) return;
+		const rootEl = doc.documentElement;
+		if (state.composer === false) {
+			if (typeof rootEl.setAttribute === "function") rootEl.setAttribute(COMPOSER_STATE_ATTR, "off");
+		} else if (typeof rootEl.removeAttribute === "function") {
+			rootEl.removeAttribute(COMPOSER_STATE_ATTR);
+		}
+	}
+
 	function render(state, instant) {
 		if (disposed) return;
 		if (applying) return;
 		applying = true;
+		publishComposer(state);
 		try {
 			const item = currentItem(state);
 			activeItem = item;
@@ -819,6 +1044,7 @@ function createEngine(options) {
 		if (doc === null) return;
 		if (doc.documentElement && typeof doc.documentElement.removeAttribute === "function") {
 			doc.documentElement.removeAttribute(ACTIVE_MARK);
+			doc.documentElement.removeAttribute(COMPOSER_STATE_ATTR);
 		}
 		if (root !== null && typeof root.remove === "function") root.remove();
 		if (styleEl !== null && typeof styleEl.remove === "function") styleEl.remove();
@@ -987,9 +1213,82 @@ function createEngine(options) {
 		}
 	}
 
+	/**
+	 * Fold the mascot away, or bring her back.
+	 *
+	 * The state lives on `<html>` (see `MASCOT_STATE_ATTR`) so it survives every
+	 * re-render of the card, and so the stylesheet needs no knowledge of the click
+	 * at all: one attribute, one rule.
+	 */
+	function toggleMascot() {
+		if (doc === null || doc.documentElement === undefined) return;
+		const root = doc.documentElement;
+		if (root.getAttribute(MASCOT_STATE_ATTR) === "hidden") root.removeAttribute(MASCOT_STATE_ATTR);
+		else root.setAttribute(MASCOT_STATE_ATTR, "hidden");
+	}
+
+	/** Resolve the card under the pointer, and whether it is the mascot's strip. */
+	function mascotClickTarget(event) {
+		const target = event && event.target;
+		if (!target || typeof target.closest !== "function") return null;
+		let card = null;
+		try {
+			card = target.closest("[data-composer-card]");
+		} catch {
+			return null;
+		}
+		if (card === null || typeof card.getBoundingClientRect !== "function") return null;
+		if (!mascotHitTest(card.getBoundingClientRect(), event.clientX, event.clientY)) return null;
+		return card;
+	}
+
+	/**
+	 * Capture-phase pair: `mousedown` stops the composer from taking focus, `click`
+	 * folds her.
+	 *
+	 * Capture, not bubble: the composer's own handlers start at the card, and
+	 * stopping the event there is what keeps a mascot click from also being a click
+	 * into the input.
+	 */
+	function onMascotPointerDown(event) {
+		try {
+			if (mascotClickTarget(event) === null) return;
+			if (typeof event.preventDefault === "function") event.preventDefault();
+			if (typeof event.stopPropagation === "function") event.stopPropagation();
+		} catch {}
+	}
+
+	function onMascotClick(event) {
+		try {
+			if (mascotClickTarget(event) === null) return;
+			if (typeof event.preventDefault === "function") event.preventDefault();
+			if (typeof event.stopPropagation === "function") event.stopPropagation();
+			toggleMascot();
+		} catch {}
+	}
+
+	/** Register the mascot's two capture listeners; called from `start`. */
+	function attachMascot() {
+		if (doc === null || typeof doc.addEventListener !== "function") return;
+		doc.addEventListener("mousedown", onMascotPointerDown, true);
+		doc.addEventListener("click", onMascotClick, true);
+	}
+
+	/** Remove them again, and the fold state with them. */
+	function detachMascot() {
+		if (doc !== null && typeof doc.removeEventListener === "function") {
+			doc.removeEventListener("mousedown", onMascotPointerDown, true);
+			doc.removeEventListener("click", onMascotClick, true);
+		}
+		if (doc !== null && doc.documentElement !== undefined) {
+			doc.documentElement.removeAttribute(MASCOT_STATE_ATTR);
+		}
+	}
+
 	/** Start: attach listeners, run the resume plan, paint. */
 	function start() {
 		attachListeners();
+		attachMascot();
 		const state = store.getState();
 		if (state.mode === "rotation" && state.paused !== true) {
 			const plan = planResume(normalizeSchedule(state.schedule), Date.now(), state.nextAt);
@@ -1020,6 +1319,7 @@ function createEngine(options) {
 		}
 		onVisibility = null;
 		onThemeChange = null;
+		detachMascot();
 		teardownVisuals();
 	}
 
@@ -1046,4 +1346,4 @@ function createEngine(options) {
 	};
 }
 
-module.exports = { createEngine, itemToBackground, readRawTheme, readPaletteFromDom, ACTIVE_ATTR, STYLE_ID, NOISE_URI, CONTRAST_TARGET, WASH_TOKENS, CANVAS_VAR, PANEL_VAR, SEAM_VAR };
+module.exports = { createEngine, itemToBackground, readRawTheme, readPaletteFromDom, mascotHitTest, ACTIVE_ATTR, MASCOT_STATE_ATTR, COMPOSER_STATE_ATTR, MASCOT_W, MASCOT_H, STYLE_ID, NOISE_URI, CONTRAST_TARGET, WASH_TOKENS, CANVAS_VAR, PANEL_VAR, SEAM_VAR };

@@ -32,10 +32,10 @@ const GENERATED = RECIPES.filter((recipe) => typeof recipe.photo !== "string");
 /** The bundled illustrations. */
 const PHOTOS = RECIPES.filter((recipe) => typeof recipe.photo === "string");
 
-test("the library ships six built-ins: two generated recipes and four illustrations", () => {
-	assert.equal(RECIPES.length, 6);
-	assert.equal(new Set(RECIPE_IDS).size, 6);
-	assert.equal(GENERATED.length, 2);
+test("the library ships five built-ins: one generated recipe and four illustrations", () => {
+	assert.equal(RECIPES.length, 5);
+	assert.equal(new Set(RECIPE_IDS).size, 5);
+	assert.equal(GENERATED.length, 1);
 	assert.equal(PHOTOS.length, 4);
 	for (const recipe of RECIPES) {
 		assert.ok(typeof recipe.id === "string" && /^[a-z]+(-[a-z]+)*$/.test(recipe.id), `odd id: ${recipe.id}`);
@@ -45,13 +45,17 @@ test("the library ships six built-ins: two generated recipes and four illustrati
 	}
 });
 
-test("both colour schemes are represented", () => {
-	// The generated family has to carry both, because that is the half a user
-	// can re-colour: a family that is all one scheme is a family with one look.
-	const light = GENERATED.filter((r) => r.scheme === "light").length;
-	assert.ok(light >= 1 && light <= GENERATED.length - 1, `${light} light of ${GENERATED.length} generated is unbalanced`);
-	// And the library as a whole must not be one scheme either.
-	assert.ok(RECIPES.some((r) => r.scheme === "light") && RECIPES.some((r) => r.scheme === "dark"));
+test("the library as a whole carries both colour schemes", () => {
+	// There is one generated recipe left, so the generated family cannot carry
+	// both schemes on its own — what still has to hold is that a person can find
+	// a light wallpaper and a dark one somewhere in the library, and that the
+	// remaining recipe is one of them.
+	assert.ok(GENERATED.length >= 1);
+	for (const recipe of GENERATED) {
+		assert.ok(recipe.scheme === "light" || recipe.scheme === "dark");
+	}
+	assert.ok(RECIPES.some((r) => r.scheme === "light"), "no light wallpaper in the library");
+	assert.ok(RECIPES.some((r) => r.scheme === "dark"), "no dark wallpaper in the library");
 });
 
 test("every built-in renders a value the engine will accept", () => {
@@ -123,7 +127,7 @@ test("a missing or unknown recipe falls back instead of throwing", () => {
 	assert.equal(renderRecipe({ recipeId: "nope" }).recipeId, RECIPES[0].id);
 	assert.equal(renderRecipe(null).recipeId, RECIPES[0].id);
 	assert.equal(getRecipe("nope").id, RECIPES[0].id);
-	assert.equal(isRecipeId("drift"), true);
+	assert.equal(isRecipeId("mist"), true);
 	assert.equal(isRecipeId("nope"), false);
 });
 
@@ -132,7 +136,7 @@ test("the retired recipes are mapped to survivors rather than collapsed onto the
 	// these. Repairing all of them to `RECIPES[0]` would turn three deliberately
 	// different wallpapers into three copies of one.
 	for (const [retired, survivor] of [
-		["aurora", "drift"],
+		["aurora", "mist"],
 		["starfield", "whale-starlit"],
 		["dune", "mist"]
 	]) {
@@ -184,9 +188,9 @@ test("the declared complexity stays inside its documented range", () => {
 });
 
 test("the tuning knobs actually change the picture", () => {
-	const base = renderRecipe({ recipeId: "drift", seed: "tune", tuning: { hue: 0, softness: 0.5, grain: 0.35 } });
-	const hue = renderRecipe({ recipeId: "drift", seed: "tune", tuning: { hue: 60, softness: 0.5, grain: 0.35 } });
-	const soft = renderRecipe({ recipeId: "drift", seed: "tune", tuning: { hue: 0, softness: 1, grain: 0.35 } });
+	const base = renderRecipe({ recipeId: "mist", seed: "tune", tuning: { hue: 0, softness: 0.5, grain: 0.35 } });
+	const hue = renderRecipe({ recipeId: "mist", seed: "tune", tuning: { hue: 60, softness: 0.5, grain: 0.35 } });
+	const soft = renderRecipe({ recipeId: "mist", seed: "tune", tuning: { hue: 0, softness: 1, grain: 0.35 } });
 	assert.notEqual(base.backgroundImage, hue.backgroundImage, "hue has no effect");
 	assert.notEqual(base.backgroundImage, soft.backgroundImage, "softness has no effect");
 });

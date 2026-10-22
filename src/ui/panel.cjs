@@ -204,7 +204,6 @@ function createPanel(deps) {
 	/** Transient user-facing message (an image that would not process, a copy result). */
 	const banner = { text: null, warn: false };
 	/** Editor drafts, kept out of persisted state until the user commits them. */
-	const gradientDraft = { from: "#141a2e", to: "#4a3a86", angle: 160 };
 	const urlDraft = { value: "" };
 
 	// ── shared plumbing ───────────────────────────────────────────────────────
@@ -551,34 +550,6 @@ function createPanel(deps) {
 	urlInput.addEventListener("input", () => {
 		urlDraft.value = urlInput.value;
 	});
-	const fromInput = dom.h("input", { class: "lumen-inline-input", attrs: { type: "color", value: gradientDraft.from, "aria-label": t("custom.from") } });
-	const toInput = dom.h("input", { class: "lumen-inline-input", attrs: { type: "color", value: gradientDraft.to, "aria-label": t("custom.to") } });
-	const angleSlider = dom.slider({
-		min: 0,
-		max: 360,
-		step: 1,
-		value: gradientDraft.angle,
-		label: t("custom.angle"),
-		format: (v) => `${v}°`,
-		onInput: (v) => {
-			gradientDraft.angle = v;
-		}
-	});
-	fromInput.addEventListener("input", () => {
-		gradientDraft.from = fromInput.value;
-	});
-	toInput.addEventListener("input", () => {
-		gradientDraft.to = toInput.value;
-	});
-	function applyGradient() {
-		const regex = /^#[0-9a-fA-F]{6}$/;
-		if (!regex.test(gradientDraft.from) || !regex.test(gradientDraft.to)) {
-			say(t("error.gradientInvalid"), true);
-			return;
-		}
-		const css = `linear-gradient(${Math.round(gradientDraft.angle)}deg, ${gradientDraft.from} 0%, ${gradientDraft.to} 100%)`;
-		patchCurrent({ kind: "gradient", ref: css, seed: "default" });
-	}
 	function applyUrl() {
 		const value = urlDraft.value.trim();
 		if (!/^https?:\/\//i.test(value)) {
@@ -602,8 +573,7 @@ function createPanel(deps) {
 		value: "local",
 		options: [
 			{ value: "local", label: t("custom.local") },
-			{ value: "url", label: t("custom.url") },
-			{ value: "gradient", label: t("custom.gradient") }
+			{ value: "url", label: t("custom.url") }
 		],
 		onChange: (value) => {
 			customSource = value;
@@ -622,20 +592,11 @@ function createPanel(deps) {
 			// folder of candidates in" work — the row is the thing the user aims at.
 			dom.acceptDrops(localRow, importFiles);
 			customBody.appendChild(localRow);
-		} else if (customSource === "url") {
+		} else {
 			customBody.appendChild(dom.h("div", { class: "lumen-row is-stack" }, urlInput));
 			customBody.appendChild(
 				dom.row(null, t("custom.url.hint"), [dom.button(t("custom.apply"), applyUrl, { small: true })])
 			);
-		} else {
-			customBody.appendChild(
-				dom.row(null, t("custom.gradient.hint"), [
-					fromInput,
-					toInput,
-					dom.button(t("custom.apply"), applyGradient, { small: true })
-				])
-			);
-			customBody.appendChild(dom.h("div", { class: "lumen-row is-stack" }, angleSlider.el));
 		}
 	}
 
@@ -1337,22 +1298,57 @@ function createPanel(deps) {
 
 	// ── assembly & sync ───────────────────────────────────────────────────────
 
+	// The composer section has exactly one control, and it is an off switch: the
+	// rim and the whale girl are what this plugin does to the input box, and the
+	// only decision worth offering is whether to do it at all. The two sentences
+	// underneath describe what the switch turns on.
+	const composerToggle = dom.toggle({
+		value: store.getState().composer !== false,
+		onChange: (on) => {
+			store.update((draft) => {
+				draft.composer = on;
+				return draft;
+			});
+			store.save();
+			requestRender();
+			sync();
+		}
+	});
+	const composerNote = dom.h("div", { class: "lumen-note lumen-composer-note" });
+	const composerCard = dom.h("div", { class: "lumen-card lumen-composer" }, [
+		dom.row(t("composer.enable"), t("composer.enable.hint"), composerToggle.el),
+		composerNote
+	]);
+
+	/**
+	 * Three sections, in the order a person meets them: the picture behind
+	 * everything, the thing that appears before the app, and the box you type in.
+	 * Diagnostics come last and are not a section of their own making — they exist
+	 * to answer "why is nothing showing", not to be browsed.
+	 */
+	// The wallpaper section stays open — folding the whole thing hid the picture,
+	// the library and the custom row behind one click, which is most of what a
+	// person came here to change. What folds is the half that gets set once:
+	// rotation and appearance, under the custom row.
 	const root = dom.h("div", { class: "lumen-root" }, [
 		bannerNode,
-		dom.group(t("group.current")),
-		heroNode,
-		dom.group(t("group.builtin"), t("group.builtin.hint")),
-		builtinGroup,
-		dom.group(t("group.custom")),
-		customGroup,
-		splash === null ? null : dom.group(t("group.splash"), t("group.splash.hint")),
-		splashGroup,
-		dom.group(t("group.rotation")),
-		rotationGroup,
-		dom.group(t("group.appearance")),
-		appearanceGroup,
-		dom.group(t("group.status")),
-		statusGroup
+		dom.section(t("section.wallpaper"), t("section.wallpaper.hint"), [
+			dom.group(t("group.current")),
+			heroNode,
+			dom.group(t("group.builtin")),
+			builtinGroup,
+			dom.group(t("group.custom")),
+			customGroup,
+			dom.disclosure(t("section.wallpaper.more"), t("section.wallpaper.more.hint"), [
+				dom.group(t("group.rotation")),
+				rotationGroup,
+				dom.group(t("group.appearance")),
+				appearanceGroup
+			])
+		]),
+		splash === null ? null : dom.section(t("group.splash"), t("group.splash.hint"), [splashGroup]),
+		dom.section(t("section.composer"), t("section.composer.hint"), [composerCard]),
+		dom.section(t("group.status"), null, [statusGroup])
 	]);
 
 	/** Push current state into every control. */
@@ -1374,6 +1370,13 @@ function createPanel(deps) {
 			? t("kind.photo")
 			: `${t(`kind.${item.kind}`)} · ${t("hero.seed")} ${item.seed}`;
 		if (shakeButton !== null) shakeButton.style.display = photo ? "none" : "";
+
+		// composer switch
+		const composerOn = state.composer !== false;
+		composerToggle.set(composerOn);
+		composerNote.textContent = composerOn
+			? `${t("section.composer.rim")} ${t("section.composer.mascot")}`
+			: t("composer.off");
 
 		// banner
 		bannerNode.textContent = banner.text === null ? "" : banner.text;

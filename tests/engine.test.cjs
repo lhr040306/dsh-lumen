@@ -13,7 +13,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { createEngine, itemToBackground, readRawTheme, readPaletteFromDom, ACTIVE_ATTR, STYLE_ID, CONTRAST_TARGET, CANVAS_VAR, PANEL_VAR, SEAM_VAR } = require("../src/engine.cjs");
+const { createEngine, itemToBackground, readRawTheme, readPaletteFromDom, mascotHitTest, ACTIVE_ATTR, MASCOT_STATE_ATTR, COMPOSER_STATE_ATTR, MASCOT_W, MASCOT_H, STYLE_ID, CONTRAST_TARGET, CANVAS_VAR, PANEL_VAR, SEAM_VAR } = require("../src/engine.cjs");
 const { createStore } = require("../src/store.cjs");
 const { createDocument, createWindow, createStorage } = require("./helpers/minidom.cjs");
 const color = require("../src/color.cjs");
@@ -123,10 +123,10 @@ function veilAlpha(document) {
 
 test("itemToBackground turns a recipe into a gradient plus a stable identity", () => {
 	const tuning = { hue: 0, softness: 0.5, grain: 0.35 };
-	const a = itemToBackground({ kind: "recipe", ref: "drift", seed: "s1" }, tuning);
-	const b = itemToBackground({ kind: "recipe", ref: "drift", seed: "s1" }, tuning);
+	const a = itemToBackground({ kind: "recipe", ref: "mist", seed: "s1" }, tuning);
+	const b = itemToBackground({ kind: "recipe", ref: "mist", seed: "s1" }, tuning);
 	assert.equal(a.image, b.image, "the same seed produced a different picture");
-	const c = itemToBackground({ kind: "recipe", ref: "drift", seed: "s2" }, tuning);
+	const c = itemToBackground({ kind: "recipe", ref: "mist", seed: "s2" }, tuning);
 	assert.notEqual(a.image, c.image, "a different seed produced the same picture");
 	assert.ok(a.image.indexOf("gradient") >= 0);
 	assert.ok(a.luminance >= 0 && a.luminance <= 1);
@@ -325,9 +325,9 @@ test("a rotation step cross-fades and advances the cursor", () => {
 	const env = makeEngine();
 	env.store.update((draft) => {
 		draft.playlist = [
-			{ id: "r1", kind: "recipe", ref: "drift", seed: "s1" },
+			{ id: "r1", kind: "recipe", ref: "mist", seed: "s1" },
 			{ id: "r2", kind: "recipe", ref: "mist", seed: "s2" },
-			{ id: "r3", kind: "recipe", ref: "drift", seed: "s3" }
+			{ id: "r3", kind: "recipe", ref: "mist", seed: "s3" }
 		];
 		draft.mode = "rotation";
 		draft.schedule = { ...draft.schedule, order: "sequential" };
@@ -346,7 +346,7 @@ test("a rotation step cross-fades and advances the cursor", () => {
 test("shuffle visits every entry before repeating one", () => {
 	const env = makeEngine();
 	env.store.update((draft) => {
-		draft.playlist = Array.from({ length: 5 }, (_, i) => ({ id: `r${i}`, kind: "recipe", ref: "drift", seed: `s${i}` }));
+		draft.playlist = Array.from({ length: 5 }, (_, i) => ({ id: `r${i}`, kind: "recipe", ref: "mist", seed: `s${i}` }));
 		draft.mode = "rotation";
 		draft.schedule = { ...draft.schedule, order: "shuffle" };
 		return draft;
@@ -419,7 +419,7 @@ test("the grain tile is generated, generated surfaces take it whole, pictures ta
 		// Pinned, not inherited: the default wallpaper is one of the bundled
 		// illustrations now, so a test that reads "whatever is current" would be
 		// measuring a picture in the branch meant to be the generated baseline.
-		draft.single = { ...draft.single, kind: "recipe", ref: "drift", seed: "default" };
+		draft.single = { ...draft.single, kind: "recipe", ref: "mist", seed: "default" };
 		return draft;
 	});
 	env.engine.start();
@@ -543,6 +543,139 @@ test("the sidebar gets its own tint and a hairline back while the wash is on", (
 	assert.equal(style.getPropertyValue(SEAM_VAR), "", "a stale hairline outlived the wash");
 });
 
+test("the composer gets a blue rim and a whale girl on its left edge", () => {
+	// Both marks are pseudo-elements on the composer card: nothing in the DOM
+	// tree, so React cannot reconcile them away. Three things have to hold — the
+	// frame is a ring and not a filled card, the sprite hangs on the card's left
+	// edge, and both files it names actually ship.
+	const fs = require("node:fs");
+	const path = require("node:path");
+	const env = makeEngine();
+	env.engine.start();
+
+	const css = env.document.getElementById(STYLE_ID).textContent;
+
+	// The frame: masked down to a hairline, guarded, and drawn from the theme
+	// accent — uneven on purpose, so it reads as light on an edge, not a stroke.
+	const frame = css.slice(css.indexOf(`[data-composer-card]:before`));
+	const ring = frame.slice(0, frame.indexOf("}") + 1);
+	assert.ok(ring.length > 0, "the frame rule is missing from the stylesheet");
+	assert.ok(ring.includes(`linear-gradient(150deg`), "the frame is not the corner-to-corner hairline");
+	assert.ok(ring.includes(`padding:2.5px`), "the rim is not 2.5px");
+	assert.ok(!ring.includes(`repeating-linear-gradient`), "the striped ribbon is back");
+	assert.ok(ring.includes(`mask-composite:exclude`), "the frame would paint the whole card");
+	assert.ok(ring.includes(`--dsw-alias-state-business-primary`), "the frame ignores the theme accent");
+	assert.ok(
+		css.lastIndexOf(`@supports`, css.indexOf(`[data-composer-card]:before`)) > 0,
+		"the masked frame is not behind an @supports guard"
+	);
+
+	// Focus lights the ring up and gives the card a soft accent ring — a
+	// `box-shadow` on the card itself, since a shadow can only be replaced.
+	const focus = css.slice(css.indexOf(`[data-composer-card]:focus-within{`));
+	const glow = focus.slice(0, focus.indexOf("}") + 1);
+	assert.ok(glow.includes(`box-shadow:0 0 0 3px`), "focus does not draw a ring");
+	assert.ok(glow.includes(`--dsw-alias-state-business-primary`), "the focus ring is not in the accent");
+
+	// The mascot: hanging over the right edge, its drawn border line landing 4px
+	// inside the card so her fingertips sit in front of the real border.
+	const mascot = css.slice(css.indexOf(`[data-composer-card]:after`));
+	const body = mascot.slice(0, mascot.indexOf("}") + 1);
+	assert.ok(body.length > 0, "the mascot rule is missing from the stylesheet");
+	assert.ok(body.includes(`left:-70px`), "the mascot does not hang over the left edge");
+	assert.ok(!body.includes(`bottom:calc(100% - 8px)`), "the mascot is still anchored to the top edge");
+	assert.ok(!body.includes(`top:50%`), "the mascot is still vertically centred");
+	assert.ok(body.includes(`bottom:2px`), "the sprite does not sit on the card's bottom edge");
+	assert.ok(!body.includes(`right:-70px`), "the mascot is still on the right edge");
+	assert.ok(body.includes(`62px auto`), "the character is not drawn at its own width");
+	assert.ok(body.includes(`pointer-events:auto`), "the mascot cannot be clicked");
+	assert.ok(body.includes(`cursor:pointer`), "the mascot does not look clickable");
+
+	// Folding: one attribute on the root, one rule — the character's image is
+	// swapped for a tail drawn on its own, and the same click brings her back.
+	const folded = css.slice(css.indexOf(`[${MASCOT_STATE_ATTR}="hidden"]`));
+	const foldRule = folded.slice(0, folded.indexOf("}", folded.indexOf("{", folded.indexOf("focus-within"))));
+	assert.ok(foldRule.length > 0, "the fold state has no rule");
+	assert.ok(foldRule.includes(`mascot-tail.webp`), "the folded state does not swap in the tail");
+	assert.ok(!foldRule.includes("clip-path"), "the folded state is still a cut-out of the character");
+	assert.ok(foldRule.includes(`transform:none`), "the folded tail keeps the character's lift");
+	assert.ok(
+		css.indexOf(`[${MASCOT_STATE_ATTR}="hidden"]`) > css.indexOf(`[data-composer-card]:focus-within:after`),
+		"the fold rule must come after the focus lift, or focus would unfold her"
+	);
+	assert.ok(
+		css.includes(`[data-composer-card]:after{transition:none`),
+		"the lift is not switched off under prefers-reduced-motion"
+	);
+
+	// The URLs are served by the host's illustration route, which serves this
+	// directory and nothing else — so both files must be real files in it.
+	for (const name of ["mascot-peek.webp", "mascot-tail.webp"]) {
+		assert.ok(css.includes(`/lumen/wallpaper/${name}`), `the stylesheet does not name ${name}`);
+		const file = path.join(__dirname, "..", "media", "wallpapers", name);
+		assert.equal(fs.existsSync(file), true, `${name} is not in the package`);
+		assert.ok(fs.statSync(file).size > 8 * 1024, `${name} is too small to be the artwork`);
+	}
+
+	env.engine.dispose();
+});
+
+test("the composer decoration can be switched off, and off is a real opt-out", () => {
+	// The switch lives in the state so it persists and so the panel can show it;
+	// the stylesheet is static, so the state becomes a marker on the root and the
+	// composer rules opt out of it. `content:none` — not `visibility` — is what
+	// makes it an opt-out: a pseudo that is never generated cannot take a click.
+	const env = makeEngine();
+	env.engine.start();
+	const root = env.document.documentElement;
+	assert.equal(env.store.getState().composer, true, "a fresh install must start decorated");
+	assert.equal(root.getAttribute(COMPOSER_STATE_ATTR), null, "a fresh state marked the composer off");
+
+	env.store.update((draft) => {
+		draft.composer = false;
+		return draft;
+	});
+	env.engine.render(true);
+	assert.equal(root.getAttribute(COMPOSER_STATE_ATTR), "off", "the switch did not reach the document");
+
+	const css = env.document.getElementById(STYLE_ID).textContent;
+	const off = css.slice(css.indexOf(`[${COMPOSER_STATE_ATTR}="off"]`));
+	assert.ok(off.includes("content:none"), "off does not remove the pseudo-elements");
+	assert.ok(off.includes(":before") && off.includes(":after"), "only one of the two decorations is removed");
+	assert.ok(off.includes("box-shadow:var(--dsw-elevation-soft"), "off keeps our focus glow on the card");
+
+	env.store.update((draft) => {
+		draft.composer = true;
+		return draft;
+	});
+	env.engine.render(true);
+	assert.equal(root.getAttribute(COMPOSER_STATE_ATTR), null, "switching back on left the marker behind");
+
+	env.engine.dispose();
+	env.store.update((draft) => {
+		draft.composer = false;
+		return draft;
+	});
+	env.engine.render(true);
+	assert.equal(env.document.documentElement.getAttribute(COMPOSER_STATE_ATTR), null, "a stale marker outlived teardown");
+});
+
+test("a click belongs to the mascot only inside her strip", () => {
+	// The mascot is a pseudo-element, so it has no listener of its own: a click on
+	// it arrives as a click on the card. This box is what tells the two apart, and
+	// it is the only part of the interaction that can be tested without a browser.
+	const card = { top: 100, bottom: 196, height: 96, left: 300, right: 1100, width: 800 };
+	const midY = 196 - 2 - MASCOT_H / 2;
+
+	assert.equal(mascotHitTest(card, 300 + 6 - 1, midY), true, "the strip inside the border is not hers");
+	assert.equal(mascotHitTest(card, 300 + 6 - MASCOT_W + 4, midY), true, "the outer half of the sprite is not hers");
+	assert.equal(mascotHitTest(card, 300 + 6 + 4, midY), false, "the composer's own edge counts as the mascot");
+	assert.equal(mascotHitTest(card, 500, midY), false, "the middle of the composer counts as the mascot");
+	assert.equal(mascotHitTest(card, 300 - 10, 196 + 20), false, "a click below the card counts as hers");
+	assert.equal(mascotHitTest(card, 300 - 40, 100 - MASCOT_H), false, "a click above the sprite counts as hers");
+	assert.equal(mascotHitTest(null, 0, 0), false, "a missing rect must not throw or hit");
+});
+
 test("dispose leaves no element, no attribute and no token override behind", () => {	const env = makeEngine();
 	env.engine.start();
 	assert.ok(env.theme.overrides.size > 0, "no wash was published");
@@ -612,7 +745,7 @@ test("a paused rotation does not advance on a timer", () => {
 	const env = makeEngine();
 	env.store.update((draft) => {
 		draft.playlist = [
-			{ id: "r1", kind: "recipe", ref: "drift", seed: "s1" },
+			{ id: "r1", kind: "recipe", ref: "mist", seed: "s1" },
 			{ id: "r2", kind: "recipe", ref: "mist", seed: "s2" }
 		];
 		draft.mode = "rotation";

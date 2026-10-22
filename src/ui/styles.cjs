@@ -64,6 +64,24 @@ const PANEL_CSS = `
   gap:14px;
   padding:2px 0 12px;
 }
+.lumen-section{display:flex;flex-direction:column;gap:12px;}
+.lumen-disclosure{margin-top:2px;padding-top:12px;border-top:1px solid var(--lumen-border);}
+.lumen-disclosure>summary{list-style:none;cursor:pointer;user-select:none;display:flex;align-items:center;gap:9px;padding:9px 12px;border:1px solid var(--lumen-border);border-radius:var(--lumen-radius);background:var(--lumen-surface);transition:background 140ms ease,border-color 140ms ease;}
+.lumen-disclosure>summary:hover{background:var(--lumen-surface-2);border-color:var(--lumen-border-2);}
+.lumen-disclosure>summary::-webkit-details-marker{display:none;}
+.lumen-disclosure>summary:focus-visible{outline:2px solid var(--lumen-accent);outline-offset:2px;}
+.lumen-disclosure-title{font-size:13px;font-weight:700;color:var(--lumen-text);letter-spacing:.01em;}
+.lumen-disclosure-hint{font-size:12px;color:var(--lumen-text-2);flex:1 1 auto;min-width:0;}
+.lumen-disclosure-body{display:flex;flex-direction:column;gap:14px;padding-top:14px;}
+.lumen-disclosure[open]>.lumen-disclosure-head .lumen-section-caret{transform:rotate(225deg) translateY(-2px);}
+.lumen-section-caret{flex:none;margin-left:auto;width:7px;height:7px;border-right:1.5px solid var(--lumen-text-2);border-bottom:1.5px solid var(--lumen-text-2);transform:rotate(45deg) translateY(-2px);transition:transform 160ms ease;}
+.lumen-section + .lumen-section{margin-top:2px;padding-top:16px;border-top:1px solid var(--lumen-border);}
+.lumen-section-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+.lumen-section-title{margin:0;font-size:14px;font-weight:600;letter-spacing:.01em;color:var(--lumen-text);}
+.lumen-section-hint{margin:0;font-size:12px;line-height:1.5;color:var(--lumen-text-2);flex:1 1 auto;min-width:0;}
+.lumen-section-body{display:flex;flex-direction:column;gap:14px;}
+.lumen-composer{gap:7px;}
+.lumen-composer .lumen-note{margin:0;}
 .lumen-group{display:flex;align-items:baseline;gap:8px;margin-top:6px;flex-wrap:wrap;}
 .lumen-group:first-child{margin-top:0;}
 .lumen-group-title{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--lumen-text-2);}

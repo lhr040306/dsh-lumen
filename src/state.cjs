@@ -136,6 +136,15 @@ const DEFAULT_STATE = Object.freeze({
 		readability: true
 	}),
 	tuning: Object.freeze({ hue: 0, softness: 0.5, grain: 0.35 }),
+	/**
+	 * Whether the plugin decorates the composer — the blue rim and the whale girl.
+	 *
+	 * Separate from the wash on purpose: the composer is the one surface the user
+	 * types into, and a decoration there is a matter of taste in a way that "the
+	 * wallpaper is visible at all" is not. Off means the input box is exactly the
+	 * host's own, with no rim, no mascot and no click target.
+	 */
+	composer: true,
 	schedule: Object.freeze(normalizeSchedule({ mode: "interval", intervalMin: 30 })),
 	/** Set once the user touches a wash slider: recipe/wallpaper changes then
 	 *  stop retuning the appearance for them. */
@@ -411,7 +420,11 @@ function normalizeState(input) {
 		wash,
 		tuning: normalizeTuning(raw.tuning),
 		schedule: normalizeSchedule(raw.schedule),
-		washTouched
+		washTouched,
+		// Only an explicit `false` turns it off: a document written before this
+		// field existed has no opinion, and the decorated composer is the
+		// behaviour those documents were already getting.
+		composer: raw.composer !== false
 	};
 }
 
@@ -464,7 +477,7 @@ function blobKey(itemId) {
  * The field list mirrors `DEFAULT_STATE`; the state test pins the two together
  * so a field added later cannot silently fall out of persistence.
  */
-const DOC_KEYS = ["mode", "single", "playlist", "cursor", "remaining", "orderRevision", "orderStep", "nextAt", "paused", "wash", "tuning", "schedule", "washTouched"];
+const DOC_KEYS = ["mode", "single", "playlist", "cursor", "remaining", "orderRevision", "orderStep", "nextAt", "paused", "wash", "tuning", "schedule", "washTouched", "composer"];
 
 /** Storage key holding the document's schema stamp. */
 const SCHEMA_KEY = "schema";
