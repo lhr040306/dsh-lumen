@@ -13,7 +13,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { createEngine, itemToBackground, readRawTheme, readPaletteFromDom, ACTIVE_ATTR, STYLE_ID, CONTRAST_TARGET, CANVAS_VAR } = require("../src/engine.cjs");
+const { createEngine, itemToBackground, readRawTheme, readPaletteFromDom, ACTIVE_ATTR, STYLE_ID, CONTRAST_TARGET, CANVAS_VAR, PANEL_VAR, SEAM_VAR } = require("../src/engine.cjs");
 const { createStore } = require("../src/store.cjs");
 const { createDocument, createWindow, createStorage } = require("./helpers/minidom.cjs");
 const color = require("../src/color.cjs");
@@ -507,8 +507,34 @@ test("a full-window view is given an opaque canvas while the wash is on", () => 
 	assert.equal(env.document.documentElement.style.getPropertyValue(CANVAS_VAR), "", "a stale canvas colour outlived the wash");
 });
 
-test("dispose leaves no element, no attribute and no token override behind", () => {
+test("the sidebar gets its own tint and a hairline back while the wash is on", () => {
+	// Windows drops the host's `border-right`, and the wash makes both the
+	// sidebar and the content transparent — so the two read as one continuous
+	// picture. One scrim of the sidebar's own fill plus one hairline restores
+	// the panel without putting a second layer in front of the wallpaper.
 	const env = makeEngine();
+	env.engine.start();
+
+	const css = env.document.getElementById(STYLE_ID).textContent;
+	assert.ok(css.includes(`[class*="sidebarCol"]`), "the seam rule is missing from the stylesheet");
+	assert.ok(css.includes(`[class*="frame"]:before`), "the titlebar strip is not part of the panel");
+	assert.ok(css.includes(`[data-windows-titlebar]`), "the seam would also fire on the darwin layout, which styles its own");
+
+	const style = env.document.documentElement.style;
+	const panel = color.parseColor(style.getPropertyValue(PANEL_VAR));
+	const seam = color.parseColor(style.getPropertyValue(SEAM_VAR));
+	assert.ok(panel !== null && panel.a > 0 && panel.a < 1, `the scrim is not translucent (${JSON.stringify(panel)})`);
+	// The dark default's sidebar fill, so a canvas-coloured scrim cannot pass.
+	assert.deepEqual([panel.r, panel.g, panel.b], [12, 15, 19], "the scrim did not use the sidebar's own fill");
+	assert.ok(seam !== null && seam.a > 0 && seam.a < 1, "the hairline is not a hairline");
+	assert.ok(seam.r > 200, "the hairline did not follow the label colour");
+
+	env.engine.dispose();
+	assert.equal(style.getPropertyValue(PANEL_VAR), "", "a stale scrim outlived the wash");
+	assert.equal(style.getPropertyValue(SEAM_VAR), "", "a stale hairline outlived the wash");
+});
+
+test("dispose leaves no element, no attribute and no token override behind", () => {	const env = makeEngine();
 	env.engine.start();
 	assert.ok(env.theme.overrides.size > 0, "no wash was published");
 	env.engine.dispose();
