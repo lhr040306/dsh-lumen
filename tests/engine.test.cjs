@@ -518,11 +518,16 @@ test("the sidebar gets its own tint and a hairline back while the wash is on", (
 	const css = env.document.getElementById(STYLE_ID).textContent;
 	assert.ok(css.includes(`[class*="sidebarCol"]`), "the seam rule is missing from the stylesheet");
 	assert.ok(css.includes(`linear-gradient(to bottom,transparent 0`), "the panel does not fade in at the sidebar's own top edge");
-	// The titlebar strip used to be tinted with it, full width. That veil lies
-	// across the top of the content and ends in a hard edge there, which reads
-	// as a fault on a picture; it has to stay clear.
-	assert.ok(!css.includes(`[class*="frame"]:before`), "the titlebar strip is tinted again");
 	assert.ok(css.includes(`[data-windows-titlebar]`), "the seam would also fire on the darwin layout, which styles its own");
+
+	// The chrome's bottom edge is a hairline on the strip, never a tint: the
+	// tinted version lay a light band across the top of the content and ended in
+	// a hard edge there, which reads as a fault on a picture.
+	const after = css.split(`[class*="frame"]:before`)[1] ?? "";
+	const strip = after.slice(0, after.indexOf("}") + 1);
+	assert.ok(strip.includes(`box-shadow:inset 0 -1px 0`), "the chrome has no bottom hairline");
+	assert.ok(!strip.includes("background"), "the titlebar strip is tinted again, not just ruled");
+	assert.ok(strip.includes(`var(${SEAM_VAR})`), "the chrome hairline does not use the seam colour");
 
 	const style = env.document.documentElement.style;
 	const panel = color.parseColor(style.getPropertyValue(PANEL_VAR));

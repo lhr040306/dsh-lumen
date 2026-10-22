@@ -180,14 +180,21 @@ const FULL_WINDOW_VIEW_CSS = `body>[role="dialog"][aria-modal="true"]:has(>heade
  * scrim is still fully transparent. The hairline starts at the same edge, which
  * is exactly where the host's own `border-right` starts in the stock layout.
  *
- * The host's class name carries a build hash (`BynINW_sidebarCol`), so this
- * selector matches the local name instead, and only while this plugin is
- * painting — `[data-dsh-lumen-active]` gates it. A host rename makes it stop
- * matching, and the window looks like it did before it existed; that is the
- * only failure mode worth having here.
+ * The chrome still needs a bottom edge, though, and only the strip can draw it:
+ * a hairline along the strip's own bottom is the same line the host has in every
+ * other layout, and unlike a tint it costs the picture nothing. It is an inset
+ * shadow rather than a border so the strip keeps the exact height the host gave
+ * it — a border would push everything below it down by a pixel.
+ *
+ * The host's class names carry a build hash (`BynINW_sidebarCol`,
+ * `BynINW_frame`), so these selectors match the local name instead, and only
+ * while this plugin is painting — `[data-dsh-lumen-active]` gates them. A host
+ * rename makes them stop matching, and the window looks like it did before they
+ * existed; that is the only failure mode worth having here.
  */
 const CHROME_SEAM_CSS = `
 html[data-windows-titlebar][${ACTIVE_MARK}] [class*="sidebarCol"]{background-image:linear-gradient(to bottom,transparent 0,var(${PANEL_VAR}) 40px);box-shadow:inset -1px 0 0 var(${SEAM_VAR});}
+html[data-windows-titlebar][${ACTIVE_MARK}] [class*="frame"]:before{box-shadow:inset 0 -1px 0 var(${SEAM_VAR});}
 `;
 
 /** The stylesheet the engine owns. Kept small and fully namespaced. */
