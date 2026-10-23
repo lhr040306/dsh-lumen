@@ -32,7 +32,7 @@
 
 <a href="media/splash.mp4"><img src=".github/assets/splash-poster.jpg" width="720" alt="开屏短片：鲸鱼娘抱住毛球，右侧是 DeepSeek Harness 字样"></a>
 
-<sub>4.5 秒 · 0.6 MB · 随包内置，装好就播 &nbsp;—&nbsp; 点封面播放</sub>
+<sub>5 秒 · 0.7 MB · 随包内置，装好就播 &nbsp;—&nbsp; 点封面播放</sub>
 
 </div>
 
