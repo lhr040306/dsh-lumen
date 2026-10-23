@@ -276,7 +276,7 @@ test("the panel renders in English when the shell is English, and only in Englis
 
 // ── the token surface, which is the plugin's main safety claim ──────────────
 
-test("the plugin overrides exactly one layer and exactly two tokens", async () => {
+test("the plugin overrides exactly one layer, and only the tokens a picture can hurt", async () => {
 	const { realm, ctx, api } = await bootWithPanel();
 	const theme = ctx.theme;
 
@@ -285,13 +285,24 @@ test("the plugin overrides exactly one layer and exactly two tokens", async () =
 	const raw = theme.rawTokens();
 	const visible = theme.visibleTokens();
 	const changed = Object.keys(visible).filter((name) => raw[name] !== visible[name]).sort();
-	assert.deepEqual(changed, ["--dsw-alias-bg-base", "--dsw-specific-sidebar-fill"]);
+	// Two surfaces, plus the two quiet labels when the picture makes them
+	// unreadable — and nothing else in a 25+ token theme.
+	const allowed = ["--dsw-alias-bg-base", "--dsw-alias-label-secondary", "--dsw-alias-label-tertiary", "--dsw-specific-sidebar-fill"];
+	for (const name of changed) {
+		assert.ok(allowed.includes(name), `the plugin changed a token it has no business touching: ${name}`);
+	}
 
 	// The two surfaces are handed over transparent, and the tint lives on the
 	// plugin's own layer. Composing the alpha into the token is what stacked up
 	// across the shell's nested surfaces and swallowed the wallpaper.
 	assert.equal(String(visible["--dsw-alias-bg-base"]), "transparent", `the canvas was not handed over: ${visible["--dsw-alias-bg-base"]}`);
 	assert.equal(String(visible["--dsw-specific-sidebar-fill"]), "transparent");
+	// A quiet label is never made transparent — it is deepened, and stays a colour.
+	for (const name of ["--dsw-alias-label-secondary", "--dsw-alias-label-tertiary"]) {
+		if (raw[name] === visible[name]) continue;
+		assert.notEqual(String(visible[name]), "transparent", `${name} was hidden rather than adjusted`);
+		assert.ok(/^rgba?\(/.test(String(visible[name])), `${name} was not published as a colour: ${visible[name]}`);
+	}
 	assert.ok(washAlpha(realm) < 1, "the plugin painted no veil, so nothing dims the picture");
 	assert.ok(Object.keys(visible).length > 25, "the shell published too few tokens for this check to mean anything");
 

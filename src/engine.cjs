@@ -41,6 +41,16 @@
  * minimum. The panel shows the difference rather than hiding it — a slider that
  * silently reads 30% while rendering 62% is exactly the kind of lie this
  * project avoids.
+ *
+ * THE SAME FLOOR HAS A SECOND HALF, AND IT IS NOT ABOUT ALPHA
+ *
+ * Secondary and tertiary labels ship *below* AA on purpose (tertiary is 3.7:1
+ * on a solid canvas), so thickening the wash can only approach a contrast that
+ * is still short of the body-text target — while flattening the picture to get
+ * there. Those two colours are moved instead, along lightness only, by
+ * `color.labelForContrast`: just far enough to clear their own target on the
+ * colour the veil actually leaves behind, and never further than
+ * `QUIET_LABEL_BUDGET`. See `quietOverrides`.
  */
 
 const { renderRecipe } = require("./wallpapers.cjs");
@@ -48,9 +58,12 @@ const {
 	parseColor,
 	withAlpha,
 	formatColor,
+	washedCanvas,
 	alphaForContrast,
+	labelForContrast,
 	estimateImageLuminance,
 	relativeLuminance,
+	contrastRatio,
 	NEUTRAL_LUMINANCE
 } = require("./color.cjs");
 const { currentItem, isSafeBackgroundImage } = require("./state.cjs");
@@ -519,8 +532,9 @@ function readRawTheme(ctx) {	let snapshot = null;
 		scheme,
 		id: chosen.id,
 		base: parseColor(chosen.tokens["--dsw-alias-bg-base"]),
-		label: parseColor(chosen.tokens["--dsw-alias-label-primary"]),
-		sidebar: parseColor(chosen.tokens["--dsw-specific-sidebar-fill"])
+		label: parseColor(chosen.tokens[LABEL_TOKEN]),
+		sidebar: parseColor(chosen.tokens["--dsw-specific-sidebar-fill"]),
+		quiet: quietFrom((name) => chosen.tokens[name])
 	};
 }
 
@@ -528,6 +542,43 @@ function readRawTheme(ctx) {	let snapshot = null;
 const WASH_TOKENS = ["--dsw-alias-bg-base", "--dsw-specific-sidebar-fill"];
 /** Token carrying the body text colour. */
 const LABEL_TOKEN = "--dsw-alias-label-primary";
+/**
+ * Tokens carrying the two *quiet* label colours, with the contrast each one has
+ * to clear once a picture is behind it.
+ *
+ * These are separate from `LABEL_TOKEN` because they are a different problem,
+ * not a smaller one: the theme ships them below AA on purpose, so no wash alpha
+ * can rescue them (see `color.labelForContrast`). Tertiary targets 3.0 — the
+ * WCAG AA threshold for large text, which is what meta text at 11-13px is
+ * designed against — and secondary keeps the body-text 4.5.
+ */
+const QUIET_TOKENS = [
+	{ name: "--dsw-alias-label-secondary", target: CONTRAST_TARGET },
+	{ name: "--dsw-alias-label-tertiary", target: 3 }
+];
+/**
+ * Largest relative-luminance move this guard may make to a quiet label.
+ *
+ * A budget rather than a target: 0.10 is roughly one visible step of "this grey
+ * is now darker" and enough to carry tertiary from ~2.3:1 to 3:1 on a washed
+ * photo. Anything past it stops being the theme's own grey and starts being a
+ * different colour, which is a louder defect than slightly faint meta text.
+ */
+const QUIET_LABEL_BUDGET = 0.1;
+
+/**
+ * Read the quiet labels through whatever lookup a palette source offers.
+ *
+ * Returned as a map keyed by token name so the two palette sources (the theme
+ * registry and the painted document) can both hand back `raw.quiet`, and a
+ * missing token is simply `null` — the guard then does nothing at all, which is
+ * the right failure for a host that renamed or dropped one of these.
+ */
+function quietFrom(read) {
+	const out = {};
+	for (const entry of QUIET_TOKENS) out[entry.name] = parseColor(read(entry.name));
+	return out;
+}
 
 /**
  * Read the palette the *document* is actually painted with.
@@ -579,7 +630,7 @@ function readPaletteFromDom(doc, win) {
 	const label = parseColor(token(LABEL_TOKEN)) || parseColor(style.color);
 	const sidebar = parseColor(token(WASH_TOKENS[1]));
 	const dark = typeof doc.body.hasAttribute === "function" && doc.body.hasAttribute("data-ds-dark-theme");
-	return { scheme: dark ? "dark" : "light", id: dark ? "dark" : "light", base, label, sidebar };
+	return { scheme: dark ? "dark" : "light", id: dark ? "dark" : "light", base, label, sidebar, quiet: quietFrom(token) };
 }
 
 /**
@@ -636,6 +687,14 @@ function createEngine(options) {
 	let reducedMotion = false;
 	let lastPlan = { due: false, missed: 0, nextAt: 0 };
 	let lastRequiredAlpha = 0;
+	/**
+	 * The quiet labels the guard moved on the last solve, for diagnostics.
+	 *
+	 * Kept because the honest answer to "why is this still faint?" is usually
+	 * "the picture measure said it was fine" or "the budget ran out", and neither
+	 * is visible on screen. Empty means nothing moved.
+	 */
+	let lastQuiet = [];
 
 	/** Whether the DOM is usable at all (headless sandbox / teardown). */
 	const domReady = () => doc !== null && doc.body !== null && doc.body !== undefined;
@@ -717,12 +776,56 @@ function createEngine(options) {
 	}
 
 	/**
+	 * The quiet-label half of the guard: the two colours that a wash alone cannot
+	 * save, deepened just enough to clear their own contrast target on the colour
+	 * the veil actually leaves behind.
+	 *
+	 * Returns the token overrides to merge, or `null` when nothing needed to move
+	 * — which is the common case (an already-dark picture, or a theme that
+	 * publishes no quiet labels at all).
+	 */
+	function quietOverrides(raw, alpha, background) {
+		const quiet = raw.quiet;
+		if (quiet === undefined || quiet === null || background === null || background === undefined) return null;
+		const backdrop = washedCanvas(raw.base, background.luminance, alpha);
+		const out = {};
+		const report = [];
+		for (const entry of QUIET_TOKENS) {
+			const own = quiet[entry.name];
+			const fixed = labelForContrast(own, backdrop, entry.target, QUIET_LABEL_BUDGET);
+			if (fixed === null) continue;
+			const ratio = contrastRatio(fixed, backdrop);
+			report.push({
+				token: entry.name,
+				from: formatColor(own),
+				to: formatColor(fixed),
+				ratio: Math.round(ratio * 100) / 100,
+				target: entry.target,
+				// `true` means the move hit the budget before it reached the
+				// target — the one case where the guard did its best and the
+				// answer is "this picture needs a heavier wash, not a darker label".
+				capped: ratio < entry.target
+			});
+			// Both scheme keys carry the same value on purpose: only the *active*
+			// scheme's raw colour is readable (DSH's built-in pair registers
+			// `tokens: {}`, so the other scheme's value never reaches this code),
+			// and a theme switch clears this layer and re-solves on the next paint.
+			const value = formatColor(fixed);
+			out[entry.name] = { light: value, dark: value };
+		}
+		lastQuiet = report;
+		return Object.keys(out).length === 0 ? null : out;
+	}
+
+	/**
 	 * Publish the wash: paint the veil, and hand the shell transparent surfaces.
 	 *
 	 * `alpha` is a single-layer alpha — it is written once, on this plugin's own
-	 * layer, so nothing compounds. `raw` supplies the colour to tint with.
+	 * layer, so nothing compounds. `raw` supplies the colour to tint with, and
+	 * `background` the picture's brightness, which is what both contrast solves
+	 * are measured against.
 	 */
-	function applyWash(alpha, raw) {
+	function applyWash(alpha, raw, background) {
 		if (raw === null || raw.base === null) return;
 		if (veil !== null) veils(alpha, raw);
 		// Published *before* the token override, and unconditionally: the rules
@@ -738,6 +841,11 @@ function createEngine(options) {
 			// only thing between the user and the wallpaper.
 			const overrides = {};
 			for (const name of WASH_TOKENS) overrides[name] = { light: "transparent", dark: "transparent" };
+			lastQuiet = [];
+			if (store.getState().wash.readability) {
+				const quiet = quietOverrides(raw, alpha, background);
+				if (quiet !== null) Object.assign(overrides, quiet);
+			}
 			const previous = overrideDispose;
 			overrideDispose = ctx.theme.overrideTokens("dsh-lumen:wash", overrides);
 			if (typeof previous === "function") previous();
@@ -822,6 +930,9 @@ function createEngine(options) {
 		// installed would call it a second time.
 		const dispose = overrideDispose;
 		overrideDispose = null;
+		// No wash, no moved labels: a stale report here would claim the shell is
+		// wearing adjusted text when it is back to the theme's own colours.
+		lastQuiet = [];
 		if (typeof dispose === "function") {
 			try {
 				dispose();
@@ -976,11 +1087,11 @@ function createEngine(options) {
 				// Headless: the token layer is still published so a DOM-less
 				// environment (or a teardown race) leaves the theme consistent,
 				// but nothing pretends a picture was painted.
-				applyWash(state.wash.opacity, raw);
+				applyWash(state.wash.opacity, raw, background);
 				return;
 			}
 			if (!needsWork && !needsCrossfade) {
-				applyWash(resolveAlpha(raw, background).effective, raw);
+				applyWash(resolveAlpha(raw, background).effective, raw, background);
 				return;
 			}
 
@@ -1021,7 +1132,7 @@ function createEngine(options) {
 				const strength = background.raster ? state.tuning.grain * 0.5 : state.tuning.grain;
 				grain.style.opacity = String(Math.round(strength * 55) / 100);
 			}
-			applyWash(resolveAlpha(raw, background).effective, raw);
+			applyWash(resolveAlpha(raw, background).effective, raw, background);
 			if (doc.documentElement && typeof doc.documentElement.setAttribute === "function") {
 				doc.documentElement.setAttribute(ACTIVE_MARK, "1");
 			}
@@ -1335,6 +1446,7 @@ function createEngine(options) {
 		inspect: () => ({
 			activeItem,
 			requiredAlpha: lastRequiredAlpha,
+			quietLabels: lastQuiet,
 			plan: lastPlan,
 			reducedMotion,
 			hasDom: root !== null,

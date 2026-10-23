@@ -18,6 +18,8 @@ const {
 	contrastRatio,
 	compositeOver,
 	alphaForContrast,
+	washedCanvas,
+	labelForContrast,
 	estimateImageLuminance,
 	mixOklab,
 	quantile,
@@ -255,4 +257,75 @@ test("a transparent pixel is skipped rather than read as black", () => {
 	for (let i = 0; i < 90; i += 1) buffer.push(0, 0, 0, 0); // transparent padding
 	for (let i = 0; i < 10; i += 1) buffer.push(255, 255, 255, 255); // the actual subject
 	assert.equal(pixelLuminanceEstimate(buffer), 1, "the transparent majority dragged the measurement down");
+});
+
+test("washedCanvas is the same flat colour the wash alpha solver assumes", () => {
+	// Shared by both solvers. If these two drifted apart, the wash would be
+	// solved against one backdrop and the quiet labels against another, and the
+	// second one would be quietly wrong by however much they diverged.
+	const canvas = parseColor("#ffffff");
+	assert.equal(formatColor(washedCanvas(canvas, 0.5, 1)), "rgb(255, 255, 255)", "a full wash is the canvas itself");
+	const bare = washedCanvas(canvas, 0.5, 0);
+	// Relative luminance 0.5 in linear light is channel ~188, not 128.
+	assert.ok(Math.abs(bare.r - 255 * 0.7354) < 1.5, `a bare picture should be its own grey, got ${formatColor(bare)}`);
+	const half = washedCanvas(canvas, 0.5, 0.5);
+	assert.ok(half.r < 255 && half.r > bare.r, "the wash did not move towards the canvas");
+});
+
+test("a quiet label is left alone when it already clears its target", () => {
+	const tertiary = parseColor("#81858c");
+	// 3.7:1 on a solid canvas: fine for meta text, and nothing is repainted.
+	assert.equal(labelForContrast(tertiary, parseColor("#ffffff"), 3, 0.1), null);
+	// But the body-text target is out of reach for it on white, so it moves.
+	assert.ok(labelForContrast(tertiary, parseColor("#ffffff"), 4.5, 0.1) !== null);
+});
+
+test("a quiet label is deepened only as far as the target needs", () => {
+	// The case that started this: tertiary over a picture under a thin veil.
+	const tertiary = parseColor("#81858c");
+	const backdrop = washedCanvas(parseColor("#ffffff"), 0.42, 0.45);
+	assert.ok(contrastRatio(tertiary, backdrop) < 3, "the fixture is not actually a contrast problem");
+	const fixed = labelForContrast(tertiary, backdrop, 3, 0.1);
+	assert.ok(fixed !== null, "the label was not darkened at all");
+	assert.ok(contrastRatio(fixed, backdrop) >= 3, `target missed: ${contrastRatio(fixed, backdrop).toFixed(2)}`);
+	// Hue survives: the mixer moves lightness, not the channel relationships.
+	assert.ok(fixed.g > fixed.b - 12 && fixed.b > fixed.g, "the grey lost its cool cast");
+	// And it stops at the first crossing rather than going to black.
+	assert.ok(relativeLuminance(fixed) > relativeLuminance(parseColor("#000000")) + 0.01);
+});
+
+test("the budget caps the move instead of overshooting it", () => {
+	// A bright picture under a very thin veil can demand more darkening than the
+	// guard is allowed to do. The answer is the budget, not the target.
+	const tertiary = parseColor("#81858c");
+	const backdrop = washedCanvas(parseColor("#ffffff"), 0.9, 0.1);
+	const start = relativeLuminance(tertiary);
+	for (const budget of [0.1, 0.05, 0.02]) {
+		const fixed = labelForContrast(tertiary, backdrop, 4.5, budget);
+		assert.ok(fixed !== null, `nothing moved at budget ${budget}`);
+		const drop = start - relativeLuminance(fixed);
+		assert.ok(drop <= budget + 1e-9, `moved ${drop.toFixed(3)} on a ${budget} budget`);
+	}
+	// The budget is spent in the direction of the target, so contrast improves.
+	const small = labelForContrast(tertiary, backdrop, 4.5, 0.02);
+	assert.ok(contrastRatio(small, backdrop) > contrastRatio(tertiary, backdrop), "the capped move made it worse");
+});
+
+test("a dark theme is lightened, not deepened, and refuses impossible targets", () => {
+	const tertiary = parseColor("#adb2b8");
+	const backdrop = washedCanvas(parseColor("#12161b"), 0.5, 0.4);
+	// Reachable-but-short: 2.04:1 as shipped, 4.37:1 is the ceiling here.
+	const fixed = labelForContrast(tertiary, backdrop, 4, 0.1);
+	assert.ok(fixed !== null);
+	assert.ok(relativeLuminance(fixed) > relativeLuminance(tertiary), "a light label on a dark backdrop was darkened");
+	// Past the ceiling there is no answer, and the honest one is "no change".
+	assert.equal(labelForContrast(tertiary, backdrop, 8, 0.1), null);
+
+	// No colour can clear a target it cannot reach even at the extreme.
+	const white = parseColor("#ffffff");
+	assert.equal(labelForContrast(white, parseColor("#fefefe"), 21, 0.1), null);
+	// Junk in, nothing out — never a throw, never a half-colour.
+	assert.equal(labelForContrast(null, parseColor("#ffffff"), 3, 0.1), null);
+	assert.equal(labelForContrast(parseColor("#81858c"), null, 3, 0.1), null);
+	assert.equal(labelForContrast(parseColor("#81858c"), parseColor("#ffffff"), 0, 0.1), null);
 });

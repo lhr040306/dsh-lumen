@@ -182,11 +182,18 @@ test("readRawTheme follows the scheme and refuses an unusable snapshot", () => {
  */
 function createPaintedWindow(document, palette) {
 	const win = createWindow(document);
+	const tokens = {
+		"--dsw-alias-label-primary": palette.label,
+		"--dsw-specific-sidebar-fill": palette.sidebar
+	};
+	// Only present when the shell actually publishes them: the degrade path
+	// (a theme that ships no quiet labels) has to be reachable from here too.
+	if (palette.secondary) tokens["--dsw-alias-label-secondary"] = palette.secondary;
+	if (palette.tertiary) tokens["--dsw-alias-label-tertiary"] = palette.tertiary;
 	win.getComputedStyle = () => ({
 		backgroundColor: palette.background,
 		color: palette.label,
-		getPropertyValue: (name) =>
-			({ "--dsw-alias-label-primary": palette.label, "--dsw-specific-sidebar-fill": palette.sidebar }[name] || "")
+		getPropertyValue: (name) => tokens[name] || ""
 	});
 	return win;
 }
@@ -840,5 +847,129 @@ test("a measured bright picture is washed harder than an unmeasured one", () => 
 	// the render key — the picture is the same picture. This asserts the wash is
 	// still recomputed on that path, which is the part that would break.
 	assert.equal(env.store.getState().single.luminance, 0.02);
+	env.engine.dispose();
+});
+
+/**
+ * The same fixture plus the two quiet labels DSH's own themes publish.
+ *
+ * Kept separate from the base fixture on purpose: every other test in this file
+ * runs against a theme with no quiet labels, which is also the degrade path the
+ * guard has to survive.
+ */
+function createQuietCtx() {
+	const ctx = createCtx();
+	ctx.theme.defs[0].tokens["--dsw-alias-label-secondary"] = "#cfd3d6";
+	ctx.theme.defs[0].tokens["--dsw-alias-label-tertiary"] = "#adb2b8";
+	ctx.theme.defs[1].tokens["--dsw-alias-label-secondary"] = "#61666b";
+	ctx.theme.defs[1].tokens["--dsw-alias-label-tertiary"] = "#81858c";
+	return ctx;
+}
+
+test("the wash also moves the quiet labels, because no alpha can save them", () => {
+	// Tertiary ships at ~3.7:1 on a solid canvas by design, so the wash can only
+	// ever approach a contrast that is still short. The colour is the last lever.
+	const env = makeEngine({ ctx: createQuietCtx() });
+	env.store.update((draft) => {
+		draft.wash = { ...draft.wash, opacity: 0.2 };
+		return draft;
+	});
+	env.engine.start();
+	const push = env.theme.pushes[env.theme.pushes.length - 1];
+	assert.deepEqual(Object.keys(push.tokens).sort(), [
+		"--dsw-alias-bg-base",
+		"--dsw-alias-label-secondary",
+		"--dsw-alias-label-tertiary",
+		"--dsw-specific-sidebar-fill"
+	]);
+	for (const name of ["--dsw-alias-bg-base", "--dsw-specific-sidebar-fill"]) {
+		assert.equal(push.tokens[name].dark, "transparent", `${name} stopped being transparent`);
+	}
+	const own = { "--dsw-alias-label-secondary": "#cfd3d6", "--dsw-alias-label-tertiary": "#adb2b8" };
+	for (const [token, source] of Object.entries(own)) {
+		const pair = push.tokens[token];
+		const moved = color.parseColor(pair.dark);
+		const original = color.parseColor(source);
+		assert.ok(moved !== null, `${token} was not published as a colour`);
+		// Only the active scheme's raw value is readable, so both keys carry the
+		// solved colour; a theme switch re-solves on the next paint.
+		assert.equal(pair.light, pair.dark, `${token} published two different colours`);
+		assert.ok(color.relativeLuminance(moved) > color.relativeLuminance(original), `${token} was not lightened on a dark theme`);
+		// Published channels are rounded to 8 bits, which is worth a few
+		// thousandths of relative luminance; the budget itself is exact.
+		assert.ok(color.relativeLuminance(moved) - color.relativeLuminance(original) <= 0.1 + 0.005, `${token} overspent its budget`);
+	}
+	// The report exists because "still faint" has two very different causes —
+	// nothing moved, or the budget ran out — and neither shows on screen.
+	const report = env.engine.inspect().quietLabels;
+	assert.equal(report.length, 2, "the guard did not report what it moved");
+	for (const entry of report) {
+		assert.notEqual(entry.from, entry.to, "a reported label did not actually change");
+		// Either the target was met, or the budget ran out first — and the report
+		// has to say which, or "still faint" stays undiagnosable.
+		if (entry.capped) assert.ok(entry.ratio < entry.target, `${entry.token} claims capped but cleared its target`);
+		else assert.ok(entry.ratio >= entry.target, `${entry.token} was reported as solved at ${entry.ratio}:1, target ${entry.target}`);
+	}
+	env.engine.dispose();
+	assert.equal(env.theme.overrides.size, 0, "the quiet labels outlived teardown");
+	assert.deepEqual(env.engine.inspect().quietLabels, [], "a stale report outlived teardown");
+});
+
+test("with the guard off, the quiet labels are left exactly as the theme set them", () => {
+	const env = makeEngine({ ctx: createQuietCtx() });
+	env.store.update((draft) => {
+		draft.wash = { ...draft.wash, opacity: 0.2, readability: false };
+		return draft;
+	});
+	env.engine.start();
+	const push = env.theme.pushes[env.theme.pushes.length - 1];
+	assert.deepEqual(Object.keys(push.tokens).sort(), ["--dsw-alias-bg-base", "--dsw-specific-sidebar-fill"]);
+	env.engine.dispose();
+});
+
+test("the quiet labels are read from the painted document, and never invented", () => {
+	// DSH's built-in themes register `tokens: {}`, so the document is the only
+	// place these two colours exist. The other half of the contract matters just
+	// as much: when the shell does *not* publish them, the palette says `null`
+	// and the guard stays out of the way.
+	const box = createDocument();
+	const full = readPaletteFromDom(box, createPaintedWindow(box, {
+		background: "rgb(255, 255, 255)",
+		label: "rgb(17, 17, 17)",
+		sidebar: "rgb(244, 245, 247)",
+		secondary: "rgb(97, 102, 107)",
+		tertiary: "rgb(129, 133, 140)"
+	}));
+	assert.equal(color.formatColor(full.quiet["--dsw-alias-label-secondary"]), "rgb(97, 102, 107)");
+	assert.equal(color.formatColor(full.quiet["--dsw-alias-label-tertiary"]), "rgb(129, 133, 140)");
+
+	const bare = readPaletteFromDom(box, createPaintedWindow(box, {
+		background: "rgb(255, 255, 255)",
+		label: "rgb(17, 17, 17)",
+		sidebar: "rgb(244, 245, 247)"
+	}));
+	assert.deepEqual(Object.values(bare.quiet), [null, null], "a missing token must read as null, not as a made-up colour");
+});
+
+test("the quiet labels do not compound across repaints", () => {
+	// Same failure the wash itself was fixed for: reading our own output back and
+	// deepening it again, one invisible step per repaint.
+	const env = makeEngine({ ctx: createQuietCtx() });
+	env.store.update((draft) => {
+		draft.wash = { ...draft.wash, opacity: 0.2 };
+		return draft;
+	});
+	env.engine.start();
+	const first = env.engine.inspect().quietLabels.map((entry) => entry.to);
+	assert.ok(first.length > 0, "the fixture did not move anything, so this proves nothing");
+	for (let i = 0; i < 10; i += 1) {
+		env.store.update((draft) => {
+			draft.tuning = { ...draft.tuning, hue: (i + 1) * 7 };
+			return draft;
+		});
+		env.engine.render();
+	}
+	const last = env.engine.inspect().quietLabels.map((entry) => entry.to);
+	assert.deepEqual(last, first, `the quiet labels drifted from ${first} to ${last}`);
 	env.engine.dispose();
 });

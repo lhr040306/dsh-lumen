@@ -144,7 +144,7 @@ const TABLE = {
 	"rotation.missed": ["休眠期间错过了 {n} 次，已经跳过，只补换一次", "Missed {n} while asleep — skipped, caught up once"],
 
 	"appearance.opacity": ["壁纸可见度", "Wallpaper visibility"],
-	"appearance.opacity.hint": ["往右拉壁纸更清楚，往左拉界面更好读；开着下面那个守护，就不必担心影响看字", "Right shows more wallpaper, left makes the interface easier to read — with the floor below on, text stays legible either way"],
+	"appearance.opacity.hint": ["往右拉壁纸更清楚，往左拉界面更好读；拉到正文都要看不清时，守护会把遮罩抬回来", "Right shows more wallpaper, left makes the interface easier to read — if body text would stop being readable, the floor below lifts the wash back up"],
 	"appearance.raised": ["为保证文字可读，遮罩已自动加厚：壁纸可见约 {n}%", "Thickened to keep text readable: about {n}% of the wallpaper shows"],
 	"appearance.blur": ["模糊", "Blur"],
 	"appearance.fit": ["填充", "Fit"],
@@ -157,7 +157,7 @@ const TABLE = {
 	"appearance.autoDim": ["自动弱化", "Auto-dim"],
 	"appearance.autoDim.hint": ["画面越花，遮罩自动加厚一点，好让文字跳出来", "Busier pictures get a slightly heavier wash so text stands out"],
 	"appearance.readability": ["可读性守护", "Readability floor"],
-	"appearance.readability.hint": ["按 WCAG AA 标准算出遮罩最少要盖多厚，保证文字和背景的对比度足够", "Works out the thinnest wash that still keeps text at WCAG AA contrast"],
+	"appearance.readability.hint": ["按 WCAG AA 标准算出遮罩最少要盖多厚，并把弱化的副文本（时间戳、用量、图标）加深到够读；它只动文字，不替你换壁纸", "Solves the thinnest wash that keeps text at WCAG AA contrast, and deepens the quiet text (timestamps, usage, icons) until it reads too — it never swaps your wallpaper to get there"],
 	"appearance.position": ["位置", "Position"],
 	"appearance.position.hint": ["照片比屏幕宽的时候会被裁掉一部分，点哪一边就留下照片的哪一边", "A photo wider than the screen gets cropped — pick which side of it to keep"],
 	// The tuning knobs do not all reach the same set of pictures: hue and

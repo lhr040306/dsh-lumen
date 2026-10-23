@@ -257,6 +257,27 @@ function mixOklab(c1, c2, t) {
 }
 
 /**
+ * The flat colour a wash of `alpha` leaves behind: the wallpaper under a film of
+ * the theme's canvas colour.
+ *
+ * A neutral grey of the wallpaper's *relative luminance* is used, not its real
+ * pixels: the cover-weighted average in `estimateImageLuminance` is a
+ * linear-light average, so the equivalent flat channel value is its square root.
+ * Both of the solvers below need this same backdrop, and deriving it twice is
+ * how the two answers would eventually disagree.
+ */
+function washedCanvas(canvasColor, wallpaperLuminance, alpha) {
+	const a = clamp(alpha, 0, 1);
+	const wallpaperChannel = 255 * linearToSrgb(clamp(wallpaperLuminance, 0, 1));
+	return {
+		r: canvasColor.r * a + wallpaperChannel * (1 - a),
+		g: canvasColor.g * a + wallpaperChannel * (1 - a),
+		b: canvasColor.b * a + wallpaperChannel * (1 - a),
+		a: 1
+	};
+}
+
+/**
  * Raise a wash alpha until the theme's primary label stays readable on the
  * washed canvas.
  *
@@ -292,18 +313,7 @@ function mixOklab(c1, c2, t) {
  */
 function alphaForContrast(canvasColor, labelColor, wallpaperLuminance, target, ceiling) {
 	const top = clamp(ceiling, 0, 1);
-	// A neutral grey of the same relative luminance: the cover-weighted average
-	// in `estimateImageLuminance` is a linear-light average, so its square root
-	// in channel space is exactly the flat colour it is equivalent to.
-	const wallpaperChannel = 255 * linearToSrgb(clamp(wallpaperLuminance, 0, 1));
-	const opacityAt = (a) => {
-		const composited = {
-			r: canvasColor.r * a + wallpaperChannel * (1 - a),
-			g: canvasColor.g * a + wallpaperChannel * (1 - a),
-			b: canvasColor.b * a + wallpaperChannel * (1 - a)
-		};
-		return contrastRatio(composited, labelColor);
-	};
+	const opacityAt = (a) => contrastRatio(washedCanvas(canvasColor, wallpaperLuminance, a), labelColor);
 	if (opacityAt(top) >= target) {
 		// Bisect on [0, top]. Monotonic in `a` because both endpoints move the
 		// composited colour towards the canvas, and contrast against `label` is
@@ -323,6 +333,99 @@ function alphaForContrast(canvasColor, labelColor, wallpaperLuminance, target, c
 		return Math.min(top, Math.ceil(hi * 1000) / 1000);
 	}
 	return round(top);
+}
+
+/**
+ * Move a "quiet" label — secondary / tertiary — until it clears `target` against
+ * the colour it is actually painted on.
+ *
+ * WHY THE WASH SOLVER IS NOT ENOUGH
+ *
+ * `alphaForContrast` protects the primary label, and it works by pushing the
+ * wash towards the theme's canvas colour — which by construction already clears
+ * AA for that label. Secondary and tertiary labels are a different case: the
+ * theme deliberately ships them *below* AA (tertiary is ~3.7:1 on a solid
+ * canvas) because they carry meta text. No wash alpha can rescue them, since
+ * the ceiling of the whole family is what the colour itself can reach — a
+ * heavier veil only approaches a contrast that is still short of the target,
+ * and it flattens the picture to get there.
+ *
+ * So the only remaining lever is the colour, and it is moved along lightness
+ * and nothing else: mixing in Oklab keeps hue and chroma where the theme put
+ * them, so the result still reads as "the app's grey", one step darker.
+ *
+ * @param {object} labelColor  the theme's raw quiet label
+ * @param {object} background  the composited backdrop (see `washedCanvas`)
+ * @param {number} target      contrast ratio to clear
+ * @param {number} maxDrop     largest relative-luminance move allowed
+ * @returns {object|null} the adjusted colour, or null when no move is needed —
+ *   or none is possible.
+ */
+function labelForContrast(labelColor, background, target, maxDrop) {
+	if (!labelColor || !background || !(target > 1)) return null;
+	const start = relativeLuminance(labelColor);
+	if (contrastRatio(labelColor, background) >= target) return null;
+	// Which way is "away from the background" is decided by the label's own
+	// polarity against that background, not by a light/dark flag: a dark theme
+	// is lightened and a light theme deepened by the same code path, and a
+	// mislabelled scheme cannot send the text the wrong way.
+	const darken = start < relativeLuminance(background);
+	const goal = darken ? { r: 0, g: 0, b: 0 } : { r: 255, g: 255, b: 255 };
+	const at = (t) => (t <= 0 ? labelColor : mixOklab(labelColor, goal, t));
+	// Even pure black (or white) misses the target: no colour move exists, and
+	// returning a half-measure here would only repaint the app for nothing.
+	if (contrastRatio(at(1), background) < target) return null;
+
+	let lo = 0;
+	let hi = 1;
+	for (let i = 0; i < 12; i += 1) {
+		const mid = (lo + hi) / 2;
+		if (contrastRatio(at(mid), background) >= target) hi = mid;
+		else lo = mid;
+	}
+	let t = hi;
+
+	// Budget the move. A label that cannot reach the target within `maxDrop`
+	// gets the budget instead of the target: the quiet hierarchy is part of the
+	// theme's design, and a guard that erases it trades one defect for another.
+	if (Math.abs(relativeLuminance(at(t)) - start) > maxDrop) {
+		let capLo = 0;
+		let capHi = t;
+		for (let i = 0; i < 12; i += 1) {
+			const mid = (capLo + capHi) / 2;
+			if (Math.abs(relativeLuminance(at(mid)) - start) <= maxDrop) capLo = mid;
+			else capHi = mid;
+		}
+		t = capLo;
+	}
+	if (t <= 0) return null;
+
+	// Snapped to a 5/255 grid, always *away* from the background. Two reasons,
+	// and the second is the one that matters: dragging the wash slider would
+	// otherwise re-emit a label that differs by a thousandth per pixel, which
+	// reads as the app's text shimmering while the slider moves. Snapping away
+	// from the background keeps the snapped value at least as readable as the
+	// solved one, so the grid never undoes the solve.
+	const step = 5;
+	const snap = (v) => (darken ? Math.floor(v / step) * step : Math.ceil(v / step) * step);
+	const moved = at(t);
+	const snapped = {
+		r: clamp(snap(moved.r), 0, 255),
+		g: clamp(snap(moved.g), 0, 255),
+		b: clamp(snap(moved.b), 0, 255),
+		a: labelColor.a === undefined ? 1 : labelColor.a
+	};
+	// Snapping pushes the colour away from the background, which can overshoot
+	// the budget by up to one grid step. When it does, the unsnapped colour is
+	// the honest answer: it is the one actually sitting on the budget. This only
+	// bites near the cap, where the extra thousandth is the whole difference.
+	const out = Math.abs(relativeLuminance(snapped) - start) <= maxDrop ? snapped : moved;
+	return {
+		r: clamp(out.r, 0, 255),
+		g: clamp(out.g, 0, 255),
+		b: clamp(out.b, 0, 255),
+		a: labelColor.a === undefined ? 1 : labelColor.a
+	};
 }
 
 /**
@@ -516,7 +619,9 @@ module.exports = {
 	compositeOver,
 	perceptualLightness,
 	mixOklab,
+	washedCanvas,
 	alphaForContrast,
+	labelForContrast,
 	estimateImageLuminance,
 	quantile,
 	pixelLuminanceEstimate,
