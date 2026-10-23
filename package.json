@@ -1,6 +1,6 @@
 {
   "name": "dsh-lumen",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "DeepSeek Harness 流转壁纸插件（Lumen）：1 套纯程序化生成的晨雾壁纸 + 4 张随包内置插画 + 本地图片/图片地址自定义 + 轮播调度器（按间隔 / 整点 / 每日 / 每次会话自动换图，带交叉淡入）+ 输入框的蓝环与鲸鱼娘，外加一段随包内置、装好即默认启用的开屏短片。生成式壁纸零图片素材，插画由宿主本机路由送出、不出网。Wallpaper rotation for DSH with one procedurally generated design, four bundled illustrations, a decorated composer, plus a bundled splash clip that is on by default.",
   "license": "MIT",
   "repository": {

@@ -584,7 +584,7 @@ test("the composer gets a blue rim and a whale girl on its left edge", () => {
 	assert.ok(glow.includes(`box-shadow:0 0 0 3px`), "focus does not draw a ring");
 	assert.ok(glow.includes(`--dsw-alias-state-business-primary`), "the focus ring is not in the accent");
 
-	// The mascot: hanging over the right edge, its drawn border line landing 4px
+	// The mascot: hanging over the left edge, its drawn border line landing 6px
 	// inside the card so her fingertips sit in front of the real border.
 	const mascot = css.slice(css.indexOf(`[data-composer-card]:after`));
 	const body = mascot.slice(0, mascot.indexOf("}") + 1);
