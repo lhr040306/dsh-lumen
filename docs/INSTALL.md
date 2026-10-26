@@ -11,7 +11,7 @@ DSH 的插件安装入口统一接受 `<来源>`，`<来源>` 有四种形态，
 | 来源 | `<来源>` | 适合 |
 | --- | --- | --- |
 | GitHub 仓库地址 | `https://github.com/lhr040306/dsh-lumen` | 普通用户（推荐） |
-| GitHub 固定版本 | `github:lhr040306/dsh-lumen#v1.3.1`（或 `#<commit>`） | 需要可复现的版本 |
+| GitHub 固定版本 | `github:lhr040306/dsh-lumen#v1.3.2`（或 `#<commit>`） | 需要可复现的版本 |
 | 本地目录 | 仓库**根目录**的绝对路径 | 自己改代码（开发） |
 | npm 包 | `dsh-lumen` | **尚未发布**，发布后才可用 |
 
@@ -42,10 +42,10 @@ CLI 等价写法：
 dsh plugin --profile web add github:lhr040306/dsh-lumen
 ```
 
-钉一个版本可以得到可复现的版本（`#` 后面可以是本仓库的标签 `v1.3.1`，也可以是任意 commit sha）：
+钉一个版本可以得到可复现的版本（`#` 后面可以是本仓库的标签 `v1.3.2`，也可以是任意 commit sha）：
 
 ```sh
-dsh plugin --profile web add github:lhr040306/dsh-lumen#v1.3.1
+dsh plugin --profile web add github:lhr040306/dsh-lumen#v1.3.2
 dsh plugin --profile web add github:lhr040306/dsh-lumen#<commit>
 ```
 

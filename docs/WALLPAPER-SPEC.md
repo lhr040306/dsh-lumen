@@ -4,7 +4,7 @@
 
 其中的数字都不是从注释里抄的，而是从 `src/` 里的导出常量与测试用的边界值读出来的。改动源码后请一并更新本文（`tests/state.test.cjs` 会断言持久化字段列表与状态自身字段列表完全一致，那是最容易漂移的一处）。
 
-**版本**：`schema 1` · 插件 `1.3.1`
+**版本**：`schema 1` · 插件 `1.3.2`
 
 ---
 
@@ -651,7 +651,7 @@ interface Schedule {
 
 | 字段 | 含义 |
 | --- | --- |
-| `plugin` / `build` / `schema` | `"dsh-lumen"` / `"1.3.1"` / `1` |
+| `plugin` / `build` / `schema` | `"dsh-lumen"` / `"1.3.2"` / `1` |
 | `status` | `booting` · `ready` · `degraded` · `disposed` |
 | `warnings` | `[dsh-lumen]` 前缀的告警行数组 |
 | `health` | `{ hostAvailable, hostReason, lastError, hasStorage }` |

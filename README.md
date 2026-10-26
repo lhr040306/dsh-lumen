@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="icon.svg" width="88" height="88" alt="dsh-lumen">
+<img src="icon.png" width="88" height="88" alt="dsh-lumen">
 
 # dsh-lumen
 
@@ -8,7 +8,7 @@
 
 <sub>1 套程序化生成的晨雾壁纸 &nbsp;·&nbsp; 4 张随包插画 &nbsp;·&nbsp; 本地图片 / 图片地址<br>按间隔 · 整点 · 每日 · 每次会话自动换图，带交叉淡入<br>输入框有蓝环，左边挂一只鲸鱼娘，点她能收成一条尾巴<br>另有随包开屏短片：装好即默认启用，可换成自己的素材，也可以直接关掉</sub>
 
-[![version](https://img.shields.io/badge/version-1.3.1-534AB7)](package.json)
+[![version](https://img.shields.io/badge/version-1.3.2-534AB7)](package.json)
 [![license](https://img.shields.io/badge/license-MIT-534AB7)](LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A5%2018-3B6D11)](package.json)
 [![tests](https://img.shields.io/badge/tests-391%20passing-0F6E56)](tests)
@@ -198,7 +198,7 @@ CLI 等价写法：
 dsh plugin --profile web add github:lhr040306/dsh-lumen
 ```
 
-要钉住版本，就在地址后面加标签或 commit（`#v1.3.1`，或任意 commit sha）。装完**重启 DSH**，然后打开 **设置 → 壁纸**。
+要钉住版本，就在地址后面加标签或 commit（`#v1.3.2`，或任意 commit sha）。装完**重启 DSH**，然后打开 **设置 → 壁纸**。
 
 > [!WARNING]
 > 桌面端的 `desktop` profile 由 Electron 应用独占管理，CLI 会硬拒 —— 桌面端请走客户端自带的插件管理入口。
