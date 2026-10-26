@@ -258,7 +258,7 @@ npm run build:check
 npm run typecheck
 ```
 
-**只读** —— 跑单元测试（19 个文件，391 项）：
+**只读** —— 跑单元测试（20 个文件，393 项）：
 
 ```sh
 npm test
@@ -344,7 +344,7 @@ dsh-lumen/（仓库根 = 包根）
 │   ├── boot.html            外壳 index 的替身（带标记，用来看开屏）
 │   └── boot.js              两帧交接（复刻 BootHandoff 的两个时刻）
 ├── scripts/                 build / typecheck / serve
-├── tests/                   19 个测试文件，391 项（含 DOM 替身）
+├── tests/                   20 个测试文件，393 项（含 DOM 替身）
 ├── locale/                  zh.json / en.json（由源码生成）
 ├── docs/                    INSTALL / INNOVATION / SPLASH-SPEC / WALLPAPER-SPEC / PACKAGE
 ├── cordis.patch.yml         profile 补丁层：插入一个 loader 条目

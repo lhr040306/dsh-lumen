@@ -8,10 +8,10 @@
 
 <sub>1 套程序化生成的晨雾壁纸 &nbsp;·&nbsp; 4 张随包插画 &nbsp;·&nbsp; 本地图片 / 图片地址<br>按间隔 · 整点 · 每日 · 每次会话自动换图，带交叉淡入<br>输入框有蓝环，左边挂一只鲸鱼娘，点她能收成一条尾巴<br>另有随包开屏短片：装好即默认启用，可换成自己的素材，也可以直接关掉</sub>
 
-[![version](https://img.shields.io/badge/version-1.3.2-534AB7)](package.json)
+[![version](https://img.shields.io/badge/version-1.3.3-534AB7)](package.json)
 [![license](https://img.shields.io/badge/license-MIT-534AB7)](LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A5%2018-3B6D11)](package.json)
-[![tests](https://img.shields.io/badge/tests-391%20passing-0F6E56)](tests)
+[![tests](https://img.shields.io/badge/tests-393%20passing-0F6E56)](tests)
 [![github](https://img.shields.io/badge/GitHub-lhr040306%2Fdsh--lumen-534AB7?logo=github&logoColor=white)](https://github.com/lhr040306/dsh-lumen)
 
 [开屏](#开屏) &nbsp;·&nbsp; [消息栏](#消息栏) &nbsp;·&nbsp; [壁纸](#壁纸一览) &nbsp;·&nbsp; [不同之处](#它和常见的换肤插件有什么不同) &nbsp;·&nbsp; [功能](#功能速览) &nbsp;·&nbsp; [安装](#安装) &nbsp;·&nbsp; [文档](#文档索引)
@@ -129,7 +129,7 @@
 | **开屏** | **内置短片默认开启** · 一个素材两处去处 · 图片开屏走纯 CSS **首帧上色** · 视频静音自动播放 · 四个出口全部有界 |
 | **消息栏** | **2.5px 蓝环**（静止 75%，hover / 聚焦全亮）· 左边一只鲸鱼娘，点她收成尾巴 · 一个开关回到 DSH 原样 · 尊重 `prefers-reduced-motion` |
 | **可读性下限** | alpha 对着 WCAG 2.1 AA 求解 · 副文本（时间戳 / 用量 / 图标）按各自的阈值**加深** · 面板**显示实际生效值**而非偷偷改掉 · 本地图片**实测亮度**驱动 |
-| **工程** | 中英双语 170 条键完全对称 · 两层持久化跨重启生效 · 插件入口**从不抛异常** · 391 项单元测试 |
+| **工程** | 中英双语 170 条键完全对称 · 两层持久化跨重启生效 · 插件入口**从不抛异常** · 393 项单元测试 |
 | **面板** | 四段：壁纸 / 开屏 / 消息栏 / 运行状态 · 轮播调度与外观折进壁纸下的「更多设置」· 壁纸段常开，因为它就是"现在显示什么" |
 
 <details>
@@ -198,7 +198,7 @@ CLI 等价写法：
 dsh plugin --profile web add github:lhr040306/dsh-lumen
 ```
 
-要钉住版本，就在地址后面加标签或 commit（`#v1.3.2`，或任意 commit sha）。装完**重启 DSH**，然后打开 **设置 → 壁纸**。
+要钉住版本，就在地址后面加标签或 commit（`#v1.3.3`，或任意 commit sha）。装完**重启 DSH**，然后打开 **设置 → 壁纸**。
 
 > [!WARNING]
 > 桌面端的 `desktop` profile 由 Electron 应用独占管理，CLI 会硬拒 —— 桌面端请走客户端自带的插件管理入口。
