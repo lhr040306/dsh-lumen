@@ -122,8 +122,6 @@
 	"appearance.autoDim.hint": "画面越花，遮罩自动加厚一点，好让文字跳出来",
 	"appearance.readability": "可读性守护",
 	"appearance.readability.hint": "按 WCAG AA 标准算出遮罩最少要盖多厚，并把弱化的副文本（时间戳、用量、图标）加深到够读；它只动文字，不替你换壁纸",
-	"appearance.drift": "静图微动",
-	"appearance.drift.hint": "照片会用四十多秒极慢地推近一点再退回，看着像景色而不像贴上去的一张图；只在「铺满」下生效，因为它就是靠一点点裁切换来的这个移动。系统开了「减弱动效」时自动不动",
 	"appearance.position": "位置",
 	"appearance.position.hint": "照片比屏幕宽的时候会被裁掉一部分，点哪一边就留下照片的哪一边",
 	"appearance.tuning.hint": "色相和柔和度只作用于「弥散」和「晨雾」这两张生成式壁纸，内置插画不受影响；颗粒对所有壁纸都生效，用在插画上只有一半力度",

@@ -354,12 +354,6 @@ test("wash flags default on and only an explicit false turns them off", () => {
 	assert.equal(state.normalizeWash({ autoDim: false }).autoDim, false);
 	assert.equal(state.normalizeWash({ autoDim: 0 }).autoDim, true);
 	assert.equal(state.normalizeWash({ readability: false }).readability, false);
-	// The drift ships on, so a document written before it existed keeps moving
-	// and the one value that means "no" is still only `false`.
-	assert.equal(state.normalizeWash({}).drift, true);
-	assert.equal(state.normalizeWash({ drift: false }).drift, false);
-	assert.equal(state.normalizeWash({ drift: 0 }).drift, true);
-	assert.equal(state.DEFAULT_STATE.wash.drift, true, "the shipped default and the normalizer disagree");
 });
 
 test("the nine wash positions are distinct and all are CSS-legal", () => {

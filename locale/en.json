@@ -122,8 +122,6 @@
 	"appearance.autoDim.hint": "Busier pictures get a slightly heavier wash so text stands out",
 	"appearance.readability": "Readability floor",
 	"appearance.readability.hint": "Solves the thinnest wash that keeps text at WCAG AA contrast, and deepens the quiet text (timestamps, usage, icons) until it reads too — it never swaps your wallpaper to get there",
-	"appearance.drift": "Slow drift",
-	"appearance.drift.hint": "The photo creeps in over three quarters of a minute and settles back, so it reads as a scene rather than as a printout. Cover only — the movement is paid for with a little cropping. Honours the system's reduced-motion setting on its own",
 	"appearance.position": "Position",
 	"appearance.position.hint": "A photo wider than the screen gets cropped — pick which side of it to keep",
 	"appearance.tuning.hint": "Hue and softness only affect the two generated wallpapers, Drift and Mist — the bundled illustrations ignore them. Grain applies to everything, at half strength on illustrations",

@@ -133,22 +133,7 @@ const DEFAULT_STATE = Object.freeze({
 		fit: "cover",
 		position: "center",
 		autoDim: true,
-		readability: true,
-		/**
-		 * Whether a still picture may move very slightly (see `engine.driftWanted`).
-		 *
-		 * Lives in `wash` because it is an appearance decision, not a scheduling
-		 * one, and defaults ON: the whole reason the feature exists is that a
-		 * photograph pinned to the viewport reads as a printout. It is still a
-		 * switch rather than a law — motion is the one thing in this plugin a
-		 * user may want off for reasons that are none of our business (a
-		 * screenshot being recorded, a laptop on battery, a vestibular
-		 * sensitivity), and `prefers-reduced-motion` is honoured on top of it.
-		 *
-		 * Nothing here relates to the retired `drift` recipe id; that name lives
-		 * in the wallpaper library and this one in the wash.
-		 */
-		drift: true
+		readability: true
 	}),
 	tuning: Object.freeze({ hue: 0, softness: 0.5, grain: 0.35 }),
 	/**
@@ -378,10 +363,7 @@ function normalizeWash(input) {
 		fit: FIT_MODES.includes(raw.fit) ? raw.fit : DEFAULT_STATE.wash.fit,
 		position: WASH_POSITIONS.includes(raw.position) ? raw.position : DEFAULT_STATE.wash.position,
 		autoDim: raw.autoDim !== false,
-		readability: raw.readability !== false,
-		// Only an explicit `false` turns it off, so a document written before the
-		// field existed keeps the behaviour the new default describes.
-		drift: raw.drift !== false
+		readability: raw.readability !== false
 	};
 }
 

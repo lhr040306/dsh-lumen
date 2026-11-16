@@ -4,7 +4,7 @@
 
 其中的数字都不是从注释里抄的，而是从 `src/` 里的导出常量与测试用的边界值读出来的。改动源码后请一并更新本文（`tests/state.test.cjs` 会断言持久化字段列表与状态自身字段列表完全一致，那是最容易漂移的一处）。
 
-**版本**：`schema 1` · 插件 `1.3.4`
+**版本**：`schema 1` · 插件 `1.3.3`
 
 ---
 
@@ -225,13 +225,12 @@ renderRecipe({ recipeId, seed, tuning })
 
 | 字段 | 范围 | 默认 | 含义 |
 | --- | --- | --- | --- |
-| `opacity` | 0.20 … 0.98 | 0.30 | 用户**要求**的不透明度 |
+| `opacity` | 0.20 … 0.98 | 0.82 | 用户**要求**的不透明度 |
 | `blur` | 0 … 60 | 0 | 模糊半径（px） |
 | `fit` | `cover` \| `contain` \| `blur` | `cover` | 填充方式 |
 | `position` | 见 6.7，共 9 个值 | `center` | 主体在视口里的位置 |
 | `autoDim` | boolean | `true` | 依 `complexity` 自动抬升 |
 | `readability` | boolean | `true` | 启用 WCAG AA 下限求解（遮罩厚度 + 弱化文字加深，见 6.3 / 6.3.1） |
-| `drift` | boolean | `true` | 静图微动。见 6.7.1 |
 
 `washTouched`（状态字段，非洗色字段）记录用户**是否曾经手动调过**洗色。它存在的意义是：默认值将来可以改进，但已经调过的人不该被覆盖。
 
@@ -343,32 +342,6 @@ bleed.style.backgroundPosition = "center"   // 恒定
 - `bleed` 层恒定居中：它存在的目的是遮住上层 `contain` 的蒙版边，一旦偏心，恰好会露出它本来要盖住的那条边。
 - `position` **必须进渲染键**（`renderKey`）。它既不改变图片内容也不改变尺寸，`needsWork` 与 `needsCrossfade` 都不会因它变真；不进键的话这次改动会被短路判为"无事可做"，位置静默不生效，直到别的什么恰好动了。
 - 未知值在 `normalizeWash` 里被修回 `center`，不是被拒绝——洗色子记录永远是一个完整可用的形状。
-
-### 6.7.1 静图微动（`drift`）
-
-一张照片钉在整屏图层上，读起来像**印上去**的：画面里的任何东西都和界面无关，眼睛会把它归档成"背景纸"。所以照片默认会极慢地推近 5.5% 再退回，46 秒一个来回（`ease-in-out` + `alternate`）。幅度刻意压在"没人会称它为动画"之下。
-
-**只在 `cover` 下生效。** 这个移动是用一圈轻微裁切换来的：图层先放大到 1.055，在溢出的 2.75%/边里平移 1.1%，两端都不会露边。`contain` 存在的意义正是不裁，所以它不动。生成式配方也不动——渐变没有主体可以平移，动起来只是"颜色在慢慢流走"。
-
-三个条件缺一不可，判定集中在 `engine.driftWanted`：
-
-```
-drift 生效 ⇔ wash.drift ≠ false ∧ item 是位图 ∧ wash.fit === "cover" ∧ 未开启减弱动效
-```
-
-实现上有一处必须注意的耦合：**CSS 动画对它所动画的属性优先于内联样式**。所以槽位一旦带上 `data-lumen-drift`，内联 `transform` 就不许再写（否则 `blur` 模式需要的 `scale(1.06)` 会被动画静默吃掉，模糊层露出自己的边）。放大倍数改走自定义属性 `--lumen-drift-base`，由关键帧自己乘：
-
-```css
-@keyframes lumen-drift {
-  from { transform: scale(var(--lumen-drift-base,1)) translate3d(0,0,0); }
-  to   { transform: scale(calc(var(--lumen-drift-base,1) * 1.055)) translate3d(-1.1%,-0.7%,0); }
-}
-```
-
-两条额外纪律：
-
-- **同一时刻只有一个槽位在动。** 交叉淡入期间两个槽位都有画面，淡出完成（`armFadeHint` 的同一个计时器，或无过渡时的当帧）由 `retireHiddenDrift` 摘掉隐藏槽的属性。否则一个 `opacity:0` 的整屏图层会永久占着合成器，而这正是本插件处处在省的那笔开销。
-- **`drift` 必须进渲染键**。关掉它没有新图片、没有参数变化，不进键就会被短路判为"无事可做"，属性摘不下来。与 `position` 同理（见 6.7）。
 
 ### 6.8 通窗口视图必须不透明
 
@@ -529,8 +502,8 @@ interface Schedule {
 洗色默认值：
 
 ```json
-{ "opacity": 0.30, "blur": 0, "fit": "cover", "position": "center",
-  "autoDim": true, "readability": true, "drift": true }
+{ "opacity": 0.82, "blur": 0, "fit": "cover", "position": "center",
+  "autoDim": true, "readability": true }
 ```
 
 ### 8.2 归一化
@@ -678,7 +651,7 @@ interface Schedule {
 
 | 字段 | 含义 |
 | --- | --- |
-| `plugin` / `build` / `schema` | `"dsh-lumen"` / `"1.3.4"` / `1` |
+| `plugin` / `build` / `schema` | `"dsh-lumen"` / `"1.3.3"` / `1` |
 | `status` | `booting` · `ready` · `degraded` · `disposed` |
 | `warnings` | `[dsh-lumen]` 前缀的告警行数组 |
 | `health` | `{ hostAvailable, hostReason, lastError, hasStorage }` |

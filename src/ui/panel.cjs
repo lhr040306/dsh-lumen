@@ -1240,14 +1240,12 @@ function createPanel(deps) {
 	});
 	const autoDimToggle = dom.toggle({ value: true, onChange: (v) => patchWash({ autoDim: v }) });
 	const readabilityToggle = dom.toggle({ value: true, onChange: (v) => patchWash({ readability: v }) });
-	const driftToggle = dom.toggle({ value: true, onChange: (v) => patchWash({ drift: v }) });
 
 	const appearanceGroup = dom.h("div", { class: "lumen-card" }, [
 		dom.h("div", { class: "lumen-row is-stack" }, opacitySlider.el),
 		opacityNote,
 		dom.row(t("appearance.readability"), t("appearance.readability.hint"), readabilityToggle.el),
 		dom.row(t("appearance.autoDim"), t("appearance.autoDim.hint"), autoDimToggle.el),
-		dom.row(t("appearance.drift"), t("appearance.drift.hint"), driftToggle.el),
 		dom.h("div", { class: "lumen-divider" }),
 		dom.h("div", { class: "lumen-row is-stack" }, blurSlider.el),
 		dom.row(t("appearance.fit"), null, fitControl.el),
@@ -1472,7 +1470,6 @@ function createPanel(deps) {
 		softnessSlider.set(state.tuning.softness);
 		autoDimToggle.set(state.wash.autoDim);
 		readabilityToggle.set(state.wash.readability);
-		driftToggle.set(state.wash.drift);
 		const required = engine.inspect().requiredAlpha;
 		if (state.wash.readability && required > state.wash.opacity + 0.005) {
 			// The floor is solved in veil terms, but the slider is in picture

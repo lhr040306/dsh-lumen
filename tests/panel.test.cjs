@@ -987,21 +987,3 @@ test("turning the splash off reports which of the two outcomes actually happened
 	assert.equal(textOf(bannerOf(failing.panel)), failing.t("splash.error.noHost"), "a failed clear was not reported");
 	failing.panel.destroy();
 });
-
-test("the drift switch writes through to the wash, not just to the widget", () => {
-	// The picture moving is a taste decision the user has to be able to reverse
-	// from the panel — so the assertion worth making is the store write, not the
-	// checkbox agreeing with itself.
-	const { panel, store, t } = makePanel();
-	const row = byClass(panel.el, "lumen-row").find((el) => textOf(el).indexOf(t("appearance.drift")) >= 0);
-	assert.ok(row, "the appearance section has no drift row");
-	const input = byClass(row, "lumen-toggle-input")[0];
-	assert.ok(input, "the drift row carries no switch");
-	assert.equal(store.getState().wash.drift, true, "a fresh panel should open with the drift on");
-	assert.equal(input.checked, true, "the switch disagrees with the state it renders");
-
-	input.checked = false;
-	input.dispatch("change", {});
-	assert.equal(store.getState().wash.drift, false, "turning the drift off did not reach the state");
-	panel.destroy();
-});
