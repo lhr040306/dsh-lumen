@@ -158,6 +158,8 @@ const TABLE = {
 	"appearance.autoDim.hint": ["画面越花，遮罩自动加厚一点，好让文字跳出来", "Busier pictures get a slightly heavier wash so text stands out"],
 	"appearance.readability": ["可读性守护", "Readability floor"],
 	"appearance.readability.hint": ["按 WCAG AA 标准算出遮罩最少要盖多厚，并把弱化的副文本（时间戳、用量、图标）加深到够读；它只动文字，不替你换壁纸", "Solves the thinnest wash that keeps text at WCAG AA contrast, and deepens the quiet text (timestamps, usage, icons) until it reads too — it never swaps your wallpaper to get there"],
+	"appearance.drift": ["静图微动", "Slow drift"],
+	"appearance.drift.hint": ["照片会用四十多秒极慢地推近一点再退回，看着像景色而不像贴上去的一张图；只在「铺满」下生效，因为它就是靠一点点裁切换来的这个移动。系统开了「减弱动效」时自动不动", "The photo creeps in over three quarters of a minute and settles back, so it reads as a scene rather than as a printout. Cover only — the movement is paid for with a little cropping. Honours the system's reduced-motion setting on its own"],
 	"appearance.position": ["位置", "Position"],
 	"appearance.position.hint": ["照片比屏幕宽的时候会被裁掉一部分，点哪一边就留下照片的哪一边", "A photo wider than the screen gets cropped — pick which side of it to keep"],
 	// The tuning knobs do not all reach the same set of pictures: hue and

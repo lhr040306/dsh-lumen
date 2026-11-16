@@ -107,6 +107,32 @@ const WAKE_CHECK_MS = 60000;
 const BLUR_OVERSCALE = 1.06;
 /** Extra blur on the `blur` fit's bleed layer, px. */
 const BLEED_BLUR = 48;
+/**
+ * Attribute on a slot whose picture is allowed to move.
+ *
+ * The drift itself is a CSS animation rather than a timer writing `transform`
+ * every frame: a full-viewport layer behind an application is the one place
+ * where a JS animation loop is a battery decision, and the compositor can run
+ * this one without waking the main thread at all. The attribute is the whole
+ * switch, so turning it off is a `removeAttribute` and nothing else.
+ */
+const DRIFT_ATTR = "data-lumen-drift";
+/**
+ * Custom property the drift animation takes its starting scale from.
+ *
+ * WHY THE SCALE IS NOT WRITTEN INLINE. A CSS animation wins over an inline
+ * `transform` for every property it animates, so a slot that carried both the
+ * animation and `transform: scale(1.06)` (the blur overscale) would silently
+ * lose the overscale and show a blurred edge. Passing the base scale through a
+ * custom property lets one `transform` declaration carry both facts.
+ */
+const DRIFT_BASE_VAR = "--lumen-drift-base";
+/** Seconds for one half of the drift — a full there-and-back is twice this. */
+const DRIFT_SECONDS = 46;
+/** How much the picture grows over one half of the drift. */
+const DRIFT_SCALE = 1.055;
+/** How far it travels meanwhile, as a share of its own width/height: `x,y`. */
+const DRIFT_SHIFT = "-1.1%,-0.7%";
 /** Slack on the cross-fade hint timer, ms — covers the paint of the last frame. */
 const FADE_HINT_SLACK_MS = 120;
 /** WCAG AA body-text contrast the readability floor targets. */
@@ -436,7 +462,9 @@ const ENGINE_CSS = `
 [${ACTIVE_ATTR}="bleed"],[${ACTIVE_ATTR}="slot-0"],[${ACTIVE_ATTR}="slot-1"]{position:absolute;inset:0;background-repeat:no-repeat;background-position:center;background-size:cover;transition-property:opacity;transition-timing-function:cubic-bezier(0.4,0,0.2,1);}
 [${ACTIVE_ATTR}="veil"]{position:absolute;inset:0;background:transparent;transition:background-color 220ms ease;}
 [${ACTIVE_ATTR}="grain"]{position:absolute;inset:0;background-image:${NOISE_URI};background-repeat:repeat;mix-blend-mode:overlay;opacity:0;transition:opacity 240ms ease;}
-@media (prefers-reduced-motion: reduce){[${ACTIVE_ATTR}="slot-0"],[${ACTIVE_ATTR}="slot-1"]{transition-duration:0ms !important;}}
+@keyframes lumen-drift{from{transform:scale(var(${DRIFT_BASE_VAR},1)) translate3d(0,0,0);}to{transform:scale(calc(var(${DRIFT_BASE_VAR},1) * ${DRIFT_SCALE})) translate3d(${DRIFT_SHIFT},0);}}
+[${ACTIVE_ATTR}][${DRIFT_ATTR}]{animation:lumen-drift ${DRIFT_SECONDS}s ease-in-out infinite alternate;}
+@media (prefers-reduced-motion: reduce){[${ACTIVE_ATTR}="slot-0"],[${ACTIVE_ATTR}="slot-1"]{transition-duration:0ms !important;}[${ACTIVE_ATTR}][${DRIFT_ATTR}]{animation:none;transform:scale(var(${DRIFT_BASE_VAR},1));}}
 ${FULL_WINDOW_VIEW_CSS}
 ${CHROME_SEAM_CSS}
 ${COMPOSER_MASCOT_CSS}
@@ -507,6 +535,66 @@ function measuredLuminance(item) {
 	const value = item === null || item === undefined ? undefined : item.luminance;
 	if (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1) return value;
 	return NEUTRAL_LUMINANCE;
+}
+
+/**
+ * Whether the picture in front of the user may move.
+ *
+ * WHY A STILL PICTURE NEEDS THIS AT ALL. A photograph pinned to a full-viewport
+ * layer reads as a printout: nothing in the frame relates to the interface on
+ * top of it, and the eye files it as background wallpaper rather than as a
+ * scene. A drift of five percent over three quarters of a minute is below the
+ * threshold where anyone would call it an animation, and above the threshold
+ * where the picture stops looking pasted on.
+ *
+ * WHY `cover` ONLY. The movement is paid for with cropping: the layer is
+ * slightly oversized and slides inside that margin. At `cover` the picture
+ * already overflows the viewport, so nothing is lost that was not already
+ * lost. `contain` exists to show the whole picture on request, and drifting it
+ * would eat exactly the edge the user asked to keep — so it does not drift.
+ *
+ * WHY RASTER ONLY. A gradient has no subject to pan across; moving one looks
+ * like a colour slowly draining, not like a photograph breathing. The recipes
+ * stay still, which also keeps "the generated wallpaper" and "the picture"
+ * distinguishable at a glance.
+ *
+ * @param {object|null} wash
+ * @param {object|null} background result of {@link itemToBackground}
+ * @param {boolean} reducedMotion
+ */
+function driftWanted(wash, background, reducedMotion) {
+	if (reducedMotion === true) return false;
+	if (background === null || background === undefined || background.raster !== true) return false;
+	// Absent means "the document predates the field", i.e. a user who has never
+	// expressed an opinion — and the default is that it drifts.
+	if (wash === null || wash === undefined || wash.drift === false) return false;
+	return wash.fit === "cover";
+}
+
+/**
+ * Mark a slot as drifting, or clear it.
+ *
+ * Kept as one function because the two states have to stay symmetric: an
+ * attribute left behind on a slot whose picture became a gradient would keep
+ * animating the *next* picture painted into that slot, and a `transform` left
+ * inline would be shadowed by the animation anyway. Both directions are
+ * therefore written here, next to each other.
+ */
+function applyDrift(slot, drifting, blurPx) {
+	if (slot === null || slot === undefined) return;
+	const style = slot.style;
+	if (drifting) {
+		if (typeof slot.setAttribute === "function") slot.setAttribute(DRIFT_ATTR, "");
+		// The animation owns `transform` from here on (see DRIFT_BASE_VAR).
+		if (style) style.transform = "";
+		if (style && typeof style.setProperty === "function") {
+			style.setProperty(DRIFT_BASE_VAR, String(blurPx > 0 ? BLUR_OVERSCALE : 1));
+		}
+		return;
+	}
+	if (typeof slot.removeAttribute === "function") slot.removeAttribute(DRIFT_ATTR);
+	if (style && typeof style.removeProperty === "function") style.removeProperty(DRIFT_BASE_VAR);
+	if (style) style.transform = blurPx > 0 ? `scale(${BLUR_OVERSCALE})` : "none";
 }
 
 /**
@@ -688,6 +776,8 @@ function createEngine(options) {
 	let onVisibility = null;
 	let disposed = false;
 	let reducedMotion = false;
+	/** Whether the picture on screen is drifting — reported through `inspect`. */
+	let lastDrift = false;
 	let lastPlan = { due: false, missed: 0, nextAt: 0 };
 	let lastRequiredAlpha = 0;
 	/**
@@ -998,7 +1088,31 @@ function createEngine(options) {
 			if (slot === null || slot === undefined) continue;
 			slot.style.willChange = "opacity";
 		}
-		fadeHintTimer = setTimeout(dropFadeHint, durationMs + FADE_HINT_SLACK_MS);
+		// The fade is the only moment the outgoing slot is allowed to keep
+		// animating, so its drift is retired on the same deadline.
+		fadeHintTimer = setTimeout(() => {
+			dropFadeHint();
+			retireHiddenDrift();
+		}, durationMs + FADE_HINT_SLACK_MS);
+	}
+
+	/**
+	 * Stop the drift on the slot that just faded out.
+	 *
+	 * A faded-out slot keeps its picture and its `opacity: 0`, and a CSS
+	 * animation keeps running on an element nobody can see: a full-viewport
+	 * layer ticking the compositor forever, behind an application, for nothing.
+	 * The visible slot is the only one that should be moving, so this is called
+	 * once the fade that justified the second one is over (immediately when
+	 * there was no fade to wait for). Idempotent.
+	 */
+	function retireHiddenDrift() {
+		for (let i = 0; i < slots.length; i += 1) {
+			const slot = slots[i];
+			if (slot === null || slot === undefined) continue;
+			if (i === front) continue;
+			if (typeof slot.removeAttribute === "function") slot.removeAttribute(DRIFT_ATTR);
+		}
 	}
 
 	/** Retire the hint immediately. Idempotent, and safe before the slots exist. */
@@ -1075,7 +1189,9 @@ function createEngine(options) {
 			// `position` belongs in the key even though it repaints nothing: without
 			// it the short-circuit below would decide there is no work to do and a
 			// position change would silently not appear until something else moved.
-			const renderKey = `${identity}|${JSON.stringify(state.tuning)}|${wash.fit}|${wash.blur}|${wash.position}`;
+			// `drift` is here for the same reason — switching it off is a state
+			// change with no new picture, and the attribute has to come off.
+			const renderKey = `${identity}|${JSON.stringify(state.tuning)}|${wash.fit}|${wash.blur}|${wash.position}|${wash.drift !== false}`;
 			const needsWork = renderKey !== lastRenderKey;
 			const needsCrossfade = identity !== lastIdentity;
 			// Whether there is a picture to fade *out of*. On the first paint of a
@@ -1106,12 +1222,17 @@ function createEngine(options) {
 			// one when only parameters moved.
 			const target = needsCrossfade ? slots[1 - front] : slots[front];
 			const outgoing = needsCrossfade && hadPicture ? slots[front] : null;
+			// Decided once for the pair: a fade between a still and a drifting
+			// picture would otherwise start the animation on the incoming slot and
+			// leave it running on the outgoing one for the length of the fade.
+			const drifting = driftWanted(wash, background, reducedMotion);
+			lastDrift = drifting;
 			for (const slot of [target, outgoing]) {
 				if (slot === null || slot === undefined) continue;
 				slot.style.backgroundImage = background.image;
 				slot.style.backgroundColor = background.color;
 				slot.style.filter = blurPx > 0 ? `blur(${blurPx}px)` : "none";
-				slot.style.transform = blurPx > 0 ? `scale(${BLUR_OVERSCALE})` : "none";
+				applyDrift(slot, drifting, blurPx);
 				slot.style.transitionDuration = `${transition}ms`;
 			}
 			if (needsCrossfade && target !== null && target !== undefined) {
@@ -1127,6 +1248,10 @@ function createEngine(options) {
 				target.style.opacity = "1";
 				if (outgoing !== null && outgoing !== undefined) outgoing.style.opacity = "0";
 				front = 1 - front;
+				// No fade to wait for (boot, reduced motion, an instant repaint), so
+				// the second layer's drift is retired here rather than by the hint
+				// timer that only exists while a fade is playing.
+				if (transition === 0) retireHiddenDrift();
 			}
 			if (grain !== null) {
 				// A raster picture already has its own texture; adding the full grain
@@ -1153,6 +1278,7 @@ function createEngine(options) {
 		lastIdentity = null;
 		lastRenderKey = null;
 		activeItem = null;
+		lastDrift = false;
 		dropFadeHint();
 		clearWash();
 		if (doc === null) return;
@@ -1452,6 +1578,10 @@ function createEngine(options) {
 			quietLabels: lastQuiet,
 			plan: lastPlan,
 			reducedMotion,
+			/** Whether the picture is drifting right now — the panel's status row
+			 *  reads this rather than the preference, because "on" in the settings
+			 *  and "on" on screen differ for a gradient or a `contain` fit. */
+			drift: lastDrift,
 			hasDom: root !== null,
 			active: root !== null,
 			/** Whether the translucent canvas is actually published. Without it the
@@ -1461,4 +1591,4 @@ function createEngine(options) {
 	};
 }
 
-module.exports = { createEngine, itemToBackground, readRawTheme, readPaletteFromDom, mascotHitTest, ACTIVE_ATTR, MASCOT_STATE_ATTR, COMPOSER_STATE_ATTR, MASCOT_W, MASCOT_H, STYLE_ID, NOISE_URI, CONTRAST_TARGET, WASH_TOKENS, CANVAS_VAR, PANEL_VAR, SEAM_VAR };
+module.exports = { createEngine, itemToBackground, driftWanted, applyDrift, DRIFT_ATTR, DRIFT_BASE_VAR, DRIFT_SECONDS, readRawTheme, readPaletteFromDom, mascotHitTest, ACTIVE_ATTR, MASCOT_STATE_ATTR, COMPOSER_STATE_ATTR, MASCOT_W, MASCOT_H, STYLE_ID, NOISE_URI, CONTRAST_TARGET, WASH_TOKENS, CANVAS_VAR, PANEL_VAR, SEAM_VAR };

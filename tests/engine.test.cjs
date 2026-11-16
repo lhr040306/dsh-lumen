@@ -13,7 +13,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { createEngine, itemToBackground, readRawTheme, readPaletteFromDom, mascotHitTest, ACTIVE_ATTR, MASCOT_STATE_ATTR, COMPOSER_STATE_ATTR, MASCOT_W, MASCOT_H, STYLE_ID, CONTRAST_TARGET, CANVAS_VAR, PANEL_VAR, SEAM_VAR } = require("../src/engine.cjs");
+const { createEngine, itemToBackground, driftWanted, DRIFT_ATTR, DRIFT_BASE_VAR, readRawTheme, readPaletteFromDom, mascotHitTest, ACTIVE_ATTR, MASCOT_STATE_ATTR, COMPOSER_STATE_ATTR, MASCOT_W, MASCOT_H, STYLE_ID, CONTRAST_TARGET, CANVAS_VAR, PANEL_VAR, SEAM_VAR } = require("../src/engine.cjs");
 const { createStore } = require("../src/store.cjs");
 const { createDocument, createWindow, createStorage } = require("./helpers/minidom.cjs");
 const color = require("../src/color.cjs");
@@ -972,4 +972,83 @@ test("the quiet labels do not compound across repaints", () => {
 	const last = env.engine.inspect().quietLabels.map((entry) => entry.to);
 	assert.deepEqual(last, first, `the quiet labels drifted from ${first} to ${last}`);
 	env.engine.dispose();
+});
+
+test("a photograph drifts only where the movement is free", () => {
+	// The three conditions are separate claims, so they are asserted separately:
+	// a photograph at `cover` moves, a generated gradient does not, `contain`
+	// does not (it would crop exactly the edge the user asked to keep), and the
+	// switch turns it off. Getting any one of these wrong is invisible in a
+	// screenshot and obvious in a recording.
+	const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
+	const env = makeEngine();
+	const drifting = () => layers(env.document, "slot-0").concat(layers(env.document, "slot-1"))
+		.filter((slot) => slot.getAttribute(DRIFT_ATTR) !== null);
+	const paint = (single, wash) => {
+		env.store.update((draft) => {
+			draft.single = single;
+			draft.wash = { ...draft.wash, ...wash };
+			return draft;
+		});
+		env.engine.render(true);
+		return drifting().length;
+	};
+	const photo = { id: "p1", kind: "image", ref: png, seed: "default" };
+
+	// Exactly one, never two: the slot that faded out keeps its picture, and an
+	// animation on an invisible full-viewport layer is compositor time nobody
+	// asked for. `retireHiddenDrift` is what makes this number 1 rather than 2.
+	assert.equal(paint(photo, { fit: "cover", drift: true }), 1, "exactly the visible photograph should drift");
+	assert.equal(paint({ id: "r1", kind: "recipe", ref: "mist", seed: "s1" }, { fit: "cover", drift: true }), 0, "a generated wallpaper has no subject to pan across");
+	assert.equal(paint(photo, { fit: "contain", drift: true }), 0, "a contained picture must not be cropped by the drift");
+	assert.equal(paint(photo, { fit: "cover", drift: false }), 0, "the switch did not take");
+	// A picture-to-picture change is the case that ends with two painted slots,
+	// so it is the one where the faded-out layer would keep animating.
+	assert.equal(paint({ ...photo, seed: "s2" }, { fit: "cover", drift: true }), 1, "the faded-out photograph kept animating");
+	env.engine.dispose();
+});
+
+test("the drift owns transform, and hands the blur overscale through a custom property", () => {
+	// A CSS animation beats an inline style for the property it animates, so a
+	// blurred slot that also drifted would silently lose `scale(1.06)` and show
+	// the blur's own edge. The overscale therefore travels in a custom property
+	// the keyframes multiply, and the inline transform is left empty on purpose.
+	const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
+	const env = makeEngine();
+	env.store.update((draft) => {
+		draft.single = { id: "p1", kind: "image", ref: png, seed: "default" };
+		draft.wash = { ...draft.wash, fit: "cover", blur: 24, drift: true };
+		return draft;
+	});
+	env.engine.render(true);
+	// Which of the two slots got the first paint is the engine's business, so the
+	// marked one is found rather than assumed.
+	const moving = layers(env.document, "slot-0").concat(layers(env.document, "slot-1"))
+		.filter((slot) => slot.getAttribute(DRIFT_ATTR) !== null)[0];
+	assert.ok(moving, "no slot was marked as drifting");
+	assert.equal(moving.style.transform, "", "an inline transform would fight the animation it has to lose to");
+	assert.equal(moving.style.getPropertyValue(DRIFT_BASE_VAR), "1.06", "the blur overscale must travel through the custom property");
+
+	env.store.update((draft) => {
+		draft.wash = { ...draft.wash, drift: false };
+		return draft;
+	});
+	env.engine.render(true);
+	// The same element, repainted in place: no cross-fade is involved in turning
+	// a switch off, which is exactly the path a stale attribute would survive on.
+	assert.equal(moving.getAttribute(DRIFT_ATTR), null, "the drift attribute outlived the switch");
+	assert.equal(moving.style.transform, "scale(1.06)", "the blurred layer still needs its overscale");
+	assert.equal(moving.style.getPropertyValue(DRIFT_BASE_VAR), "", "a stale base scale would outlive the animation");
+	env.engine.dispose();
+});
+
+test("reduced motion wins over the drift preference", () => {
+	const background = itemToBackground({ kind: "image", ref: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==", seed: "default" }, null);
+	assert.equal(driftWanted({ fit: "cover", drift: true }, background, true), false, "the OS asked for less motion and got more");
+	assert.equal(driftWanted({ fit: "cover", drift: true }, background, false), true);
+	// An absent field is a document written before the switch existed, which is
+	// a user who never expressed an opinion — and the default drifts.
+	assert.equal(driftWanted({ fit: "cover" }, background, false), true);
+	assert.equal(driftWanted(null, background, false), false, "no wash means no opinion to act on");
+	assert.equal(driftWanted({ fit: "cover" }, null, false), false, "no picture means nothing to move");
 });
